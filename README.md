@@ -11,5 +11,5 @@
 - Restore points can be set at any point and restored easily to make undo/redo easier.
 - Supports data deletion, insertion, overwriting, undo/redo, restore points, partial data views, multi-stream read-only sources, and multiple stream insertion.
 - Low memory usage and blazing fast modifications.
-- IMPORTANT - Once data has been added to a PatchStream it cannot be modified in any way. Modify the PatchStream itself.
+- IMPORTANT - Once data has been added to a PatchStream it should not be modified in any way. Modify the PatchStream itself.
 

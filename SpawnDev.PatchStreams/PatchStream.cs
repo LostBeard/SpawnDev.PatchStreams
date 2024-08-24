@@ -16,7 +16,7 @@ namespace SpawnDev.PatchStreams
     {
         /// <summary>
         /// Returns a clone of this PatchStream<br/>
-        /// All patches are copied. Position, and PatchIndex are also copy, so that the current view is retained.<br/>
+        /// All patches are copied. Position, and PatchIndex are also copied so that the current view is retained.<br/>
         /// No underlying data is actually copied, only references are copied.<br/>
         /// Cloning allows forking a stream, where both streams will reference the same data that was available at the time of cloning, but any modifications are independent.
         /// </summary>
