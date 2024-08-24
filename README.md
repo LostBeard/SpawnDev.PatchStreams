@@ -2,7 +2,7 @@
 
 [![NuGet version](https://badge.fury.io/nu/SpawnDev.PatchStreams.svg)](https://www.nuget.org/packages/SpawnDev.PatchStreams)
 
-## PatchStream
+## PatchStream : Stream
 
 - PatchStream inherits from [Stream](https://learn.microsoft.com/en-us/dotnet/api/system.io.stream?view=net-8.0) making it easy to use with countless existing libraries that can work with Streams.
 - A PatchStream is a writable stream that, when modified, does not modify any source data or data added to it, but instead creates patches to represent the data changes.
