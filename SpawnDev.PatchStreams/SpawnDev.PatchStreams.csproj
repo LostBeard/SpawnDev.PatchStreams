@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net9.0;net8.0;net7.0;net6.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Version>1.0.0</Version>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<EmbedAllSources>true</EmbedAllSources>
+		<DebugType>Embedded</DebugType>
+		<Title>SpawnDev.PatchStreams</Title>
+		<Authors>LostBeard</Authors>
+		<Description>Create streams with partial views, multiple streams, or read-only sources. Delete, insert, overwrite with full support for undo/redo and restore-points even with read-only streams.</Description>
+		<PackageProjectUrl>https://github.com/LostBeard/SpawnDev.PatchStreams</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<PackageIcon>icon-128.png</PackageIcon>
+		<RepositoryUrl>https://github.com/LostBeard/SpawnDev.PatchStreams.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>DataStreams;Streams;</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+		<None Include="..\LICENSE.txt" Pack="true" PackagePath="\" />
+		<None Include="..\icon-128.png" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>
