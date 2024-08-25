@@ -19,41 +19,34 @@ The below code is a basic demonstration of PatchStream reading writing, insertin
 // Source data and data added to PatchStream should not be modified once it is added
 var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s)?, long offset = 0*/);
 patchStream.Write("world!");
-patchStream.Position = 0;
-// switch on insert mode
-patchStream.InsertWrites = true;
 // prepend "Hello "
-patchStream.Write("Hello ");
+patchStream.InsertWrites = true;
 patchStream.Position = 0;
+patchStream.Write("Hello ");
 // set restore point for the current patch. we can revert back later
 patchStream.RestorePoint = true;
 // test data is now "Hello world!"
-Console.WriteLine(Encoding.UTF8.GetString(patchStream.ToArray()));
-patchStream.Position = 6;
-// switch off insert mode
+Console.WriteLine(patchStream.ToString(true));
+// overwrite "world!" with "DotNet!"
 patchStream.InsertWrites = false;
+patchStream.Position = 6;
 patchStream.Write("DotNet!");
-patchStream.Position = 0;
 // test data is now "Hello DotNet!"
-Console.WriteLine(Encoding.UTF8.GetString(patchStream.ToArray()));
-patchStream.Position = 0;
-// switch on insert mode
-patchStream.InsertWrites = true;
+Console.WriteLine(patchStream.ToString(true));
 // prepend "Hello "
+patchStream.InsertWrites = true;
+patchStream.Position = 0;
 patchStream.Write("Presenting: ");
-patchStream.Position = 0;
-// delete data. 
+// delete data
 patchStream.Delete();
-// test data is now ""
-Console.WriteLine("Empty ->" + Encoding.UTF8.GetString(patchStream.ToArray()));
-patchStream.Position = 0;
+// test data is now "" and patchStream.Length == 0
+Console.WriteLine("Empty ->" + patchStream.ToString(true));
 // undo the last modification, which was or Delete
 patchStream.Undo();
 // test data is now "Presenting: Hello DotNet!"
-Console.WriteLine(Encoding.UTF8.GetString(patchStream.ToArray()));
-patchStream.Position = 0;
+Console.WriteLine(patchStream.ToString(true));
 // go to the most recent restore point
 patchStream.RestorePointUndo();
 // test data is now "Hello world!"
-Console.WriteLine(Encoding.UTF8.GetString(patchStream.ToArray()));
+Console.WriteLine(patchStream.ToString(true));
 ```
