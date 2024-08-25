@@ -17,7 +17,7 @@ The below code is a basic demonstration of PatchStream reading writing, insertin
 ```cs
 // Create a new PatchStream with or without source data.
 // Source data and data added to PatchStream should not be modified once it is added
-var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s)?, long offset = 0*/);
+var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
 patchStream.Write("world!");
 // prepend "Hello "
 patchStream.InsertWrites = true;
