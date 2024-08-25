@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections.Specialized;
+using System.Text;
 
 namespace SpawnDev.PatchStreams
 {
@@ -397,9 +398,14 @@ namespace SpawnDev.PatchStreams
         {
             if (Position > Length) throw new Exception("Write past end of file");
             var bytes = buffer.Skip(offset).Take(count).ToArray();
-            Splice(Position, count, new MemoryStream(bytes));
+            var overwriteCount = InsertWrites ? 0 : count;
+            Splice(Position, overwriteCount, new MemoryStream(bytes));
             Position += count;
         }
+        /// <summary>
+        /// When true, writes will is insert mode instead of over-write mode
+        /// </summary>
+        public bool InsertWrites { get; set; }
         /// <summary>
         /// Set the stream's position
         /// </summary>
