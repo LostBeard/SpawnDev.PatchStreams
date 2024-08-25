@@ -45,6 +45,7 @@ patchStream.InsertWrites = true;
 patchStream.Position = 0;
 patchStream.Write("Presenting: ");
 
+// Flush all patches to the initial source (flush requires writable initial source)
 patchStream.Flush();
 Console.WriteLine(patchStream.ToString(true));
 
