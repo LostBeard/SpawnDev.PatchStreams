@@ -518,6 +518,9 @@ namespace SpawnDev.PatchStreams
             Position = 0;
             UpdateSource(originalPatch.Sources, originalPatch.Offset);
         }
+        /// <summary>
+        /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
+        /// </summary>
         public override async Task FlushAsync(CancellationToken cancellationToken)
         {
             if (_Patches.Count < 2) return;
