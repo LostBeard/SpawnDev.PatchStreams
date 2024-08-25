@@ -19,7 +19,7 @@ using SpawnDev.PatchStreams;
 
 // Create a new PatchStream with or without source data.
 // Source data and data added to PatchStream should not be modified once it is added
-var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
+var patchStream = new PatchStream(new MemoryStream());
 patchStream.Write("world!");
 // patchStream data is now "world!"
 
@@ -64,5 +64,8 @@ patchStream.RestorePointUndo();
 
 // patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
+
+// Flush all changes to the original source stream (for single, writable source streams only)
+patchStream.Flush();
 
 ```
