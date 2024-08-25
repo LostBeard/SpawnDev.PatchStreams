@@ -65,7 +65,7 @@ patchStream.RestorePointUndo();
 // patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
 
-// Flush all changes to the original source stream (for single, writable source streams only)
+// Flush current patch stream to the original source stream (for single, writable source streams only)
 patchStream.Flush();
 
 ```
