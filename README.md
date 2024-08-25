@@ -21,11 +21,13 @@ using SpawnDev.PatchStreams;
 // Source data and data added to PatchStream should not be modified once it is added
 var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
 patchStream.Write("world!");
+// patchStream data is now "world!"
 
 // prepend "Hello "
 patchStream.InsertWrites = true;
 patchStream.Position = 0;
 patchStream.Write("Hello ");
+
 // patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
 
