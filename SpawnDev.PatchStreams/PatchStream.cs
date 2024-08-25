@@ -787,16 +787,6 @@ namespace SpawnDev.PatchStreams
             return ret;
         }
         /// <summary>
-        /// Returns the stream as a string starting from the current position
-        /// </summary>
-        /// <returns></returns>
-        public override string ToString()
-        {
-            var ret = new byte[Length - Position];
-            _ = Read(ret, 0, ret.Length);
-            return Encoding.UTF8.GetString(ret);
-        }
-        /// <summary>
         /// Returns the stream as a string starting from the current position or the beginning if fullBuffer is true<br/>
         /// Position is modified if fullBuffer == false
         /// </summary>
