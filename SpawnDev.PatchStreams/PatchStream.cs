@@ -469,6 +469,9 @@ namespace SpawnDev.PatchStreams
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
+        /// Because we have modified an underlying source, all Patches, except the first, will be discarded.<br/>
+        /// As far as any viewers of this stream are concerned, no data has changed<br/>
+        /// This cannot be undone.
         /// </summary>
         public override void Flush()
         {
@@ -479,98 +482,76 @@ namespace SpawnDev.PatchStreams
             // then copy all affected regions to the first
             var originalPatch = Patches.First();
             var originalSources = originalPatch.Sources;
-            Stream? destStream = null;
-            var destOffset = originalPatch.Offset;
-            if (originalSources.Count == 1)
-            {
-                destStream = originalSources[0];
-            }
-            else
-            {
-                // single stream required
-                return;
-            }
-            if (!destStream.CanWrite)
-            {
-                return;
-            }
-            var sourcePatch = Patch;
-            var affectRegions = CalculateAffectedRegions(sourcePatch, originalPatch);
-            if (affectRegions == null || !affectRegions.Any())
-            {
-                return;
-            }
-            // copy regions into destinationStream starting at destOffset
-            foreach (var region in affectRegions)
+            if (originalSources.Count != 1) return;
+            var destinationStream = originalSources[0];
+            // the destination stream must be writable
+            if (!destinationStream.CanWrite) return;
+            var affectedRegions = CalculateAffectedRegions(Patch, originalPatch);
+            if (affectedRegions == null) return;
+            var destinationOffset = originalPatch.Offset;
+            var destinationPosition = destinationStream.Position;
+            var originalPosition = Position;
+            // copy regions into destinationStream starting at destinationOffset
+            foreach (var region in affectedRegions)
             {
                 Position = region.Start;
-                destStream.Position = region.Start + destOffset;
-                // copy region.Size bytes to destStream
-                CopyStream(destStream, (int)region.Size);
+                destinationStream.Position = region.Start + destinationOffset;
+                CopyStream(destinationStream, (int)region.Size);
             }
             // verify stream length is correct
-            if (destStream.Length != Length + destOffset)
+            if (destinationStream.Length != Length + destinationOffset)
             {
-                destStream.SetLength(Length + destOffset);
+                destinationStream.SetLength(Length + destinationOffset);
             }
             // because we have modified an underlying source, all Patches, except the first, will be discarded
+            // as far as any viewers of this stream are concerned, no data has changed
             _PatchIndex = -1;
-            Position = 0;
+            destinationStream.Position = destinationPosition;
+            Position = originalPosition;
             UpdateSource(originalPatch.Sources, originalPatch.Offset);
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
+        /// Because we have modified an underlying source, all Patches, except the first, will be discarded.<br/>
+        /// As far as any viewers of this stream are concerned, no data has changed<br/>
+        /// This cannot be undone.
         /// </summary>
         public override async Task FlushAsync(CancellationToken cancellationToken)
         {
             if (_Patches.Count < 2) return;
             if (_PatchIndex == 0) return;
-            // TODO
             // When flush is called, check if the first Patch is a single, Writable stream.
             // If it is, get all affected regions from the current patch to the first
             // then copy all affected regions to the first
             var originalPatch = Patches.First();
             var originalSources = originalPatch.Sources;
-            Stream? destStream = null;
-            var destOffset = originalPatch.Offset;
-            if (originalSources.Count == 1)
-            {
-                destStream = originalSources[0];
-            }
-            else
-            {
-                // single stream required
-                return;
-            }
-            if (!destStream.CanWrite)
-            {
-                return;
-            }
-            var sourcePatch = Patch;
-            var affectRegions = CalculateAffectedRegions(sourcePatch, originalPatch);
-            if (affectRegions == null || !affectRegions.Any())
-            {
-                return;
-            }
-            // copy regions into destinationStream starting at destOffset
-            foreach (var region in affectRegions)
+            if (originalSources.Count != 1) return;
+            var destinationStream = originalSources[0];
+            // the destination stream must be writable
+            if (!destinationStream.CanWrite) return;
+            var affectedRegions = CalculateAffectedRegions(Patch, originalPatch);
+            if (affectedRegions == null) return;
+            var destinationOffset = originalPatch.Offset;
+            var destinationPosition = destinationStream.Position;
+            var originalPosition = Position;
+            // copy regions into destinationStream starting at destinationOffset
+            foreach (var region in affectedRegions)
             {
                 Position = region.Start;
-                destStream.Position = region.Start + destOffset;
-                // copy region.Size bytes to destStream
-                await CopyStreamAsync(destStream, (int)region.Size, cancellationToken);
+                destinationStream.Position = region.Start + destinationOffset;
+                await CopyStreamAsync(destinationStream, (int)region.Size, cancellationToken);
             }
             // verify stream length is correct
-            if (destStream.Length != Length + destOffset)
+            if (destinationStream.Length != Length + destinationOffset)
             {
-                destStream.SetLength(Length + destOffset);
+                destinationStream.SetLength(Length + destinationOffset);
             }
-            // ...
             // because we have modified an underlying source, all Patches, except the first, will be discarded
+            // as far as any viewers of this stream are concerned, no data has changed
             _PatchIndex = -1;
-            Position = 0;
+            destinationStream.Position = destinationPosition;
+            Position = originalPosition;
             UpdateSource(originalPatch.Sources, originalPatch.Offset);
-            // 
         }
         /// <summary>
         /// Copies the specified number of bytes from this stream, starting at the specified position, to the destination stream
