@@ -417,7 +417,8 @@ namespace SpawnDev.PatchStreams
             return true;
         }
         /// <summary>
-        /// Move to the previous Patch with RestorePoint == true in Patches, if there is one
+        /// Move to the previous Patch with RestorePoint == true in Patches, if there is one.<br/>
+        /// The first patch and last patch are both considered un-official restore points.
         /// </summary>
         /// <returns></returns>
         public bool RestorePointUndo()
@@ -429,7 +430,8 @@ namespace SpawnDev.PatchStreams
             return Restore(lastRestorePointBeforeThisPatch.Index);
         }
         /// <summary>
-        /// Move to the next Patch with RestorePoint == true in Patches, if there is one
+        /// Move to the next Patch with RestorePoint == true in Patches, if there is one.<br/>
+        /// The first patch and last patch are both considered un-official restore points.
         /// </summary>
         /// <returns></returns>
         public bool RestorePointRedo()
