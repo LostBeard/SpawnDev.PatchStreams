@@ -1,6 +1,6 @@
 ﻿namespace SpawnDev.PatchStreams
 {
-    public class Range
+    public class ByteRange
     {
         public long Start { get; private set; }
         public long Size { get; set; }
@@ -12,11 +12,11 @@
             get => Start + Size;
             set => Size = value - Start;
         }
-        public Range(long start)
+        public ByteRange(long start)
         {
             Start = start;
         }
-        public Range(long start, long size)
+        public ByteRange(long start, long size)
         {
             Start = start;
             Size = size;

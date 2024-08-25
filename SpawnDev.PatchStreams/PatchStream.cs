@@ -1,7 +1,4 @@
-﻿using System.Collections.Specialized;
-using System.Diagnostics;
-using System.Text;
-using System.Threading;
+﻿using System.Text;
 
 namespace SpawnDev.PatchStreams
 {
@@ -171,7 +168,7 @@ namespace SpawnDev.PatchStreams
         /// <param name="sender">The event sender</param>
         /// <param name="overwrittenPatches">The patches overwritten by the change, if any</param>
         /// <param name="affectedRegions">The stream regions that were affected by the change</param>
-        public delegate void ChangedEvent(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<Range> affectedRegions);
+        public delegate void ChangedEvent(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<ByteRange> affectedRegions);
         /// <summary>
         /// Fired when Streams are no longer needed by this stream
         /// </summary>
@@ -202,7 +199,7 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream() => UpdateSource(new Stream[] { });
+        public PatchStream() => UpdateSource(new Stream[] { new MemoryStream() });
         /// <summary>
         /// Creates an new instance
         /// </summary>
@@ -294,11 +291,11 @@ namespace SpawnDev.PatchStreams
             var overwrittenPatches = overwritePatchesCount <= 0 ? Enumerable.Empty<Patch>() : _Patches.Skip(patchIndex).ToList();
             _Patches.Add(patch);
             // the first patch is always marked as a restore point
-            IEnumerable<Range> affectedRegions;
+            IEnumerable<ByteRange> affectedRegions;
             if (patch.Index == 0)
             {
                 patch.RestorePoint = true;
-                affectedRegions = Enumerable.Empty<Range>();
+                affectedRegions = Enumerable.Empty<ByteRange>();
             }
             else
             {
@@ -317,7 +314,7 @@ namespace SpawnDev.PatchStreams
         /// <param name="fromPatchId">The patch to start with</param>
         /// <param name="toPatchId">The patch to end on</param>
         /// <returns>a List of non-overlapping ranges representing regions of data affected by all changes between the specified patches</returns>
-        public List<Range>? CalculateAffectedRegions(string fromPatchId, string toPatchId)
+        public List<ByteRange>? CalculateAffectedRegions(string fromPatchId, string toPatchId)
         {
             var fromPatch = _Patches.FirstOrDefault(o => o.Id == fromPatchId);
             if (fromPatch == null) return null;
@@ -331,9 +328,9 @@ namespace SpawnDev.PatchStreams
         /// <param name="fromPatch">The patch to start with</param>
         /// <param name="toPatch">The patch to end on</param>
         /// <returns>a List of non-overlapping ranges representing regions of data affected by all changes between the specified patches</returns>
-        public List<Range>? CalculateAffectedRegions(Patch fromPatch, Patch toPatch)
+        public List<ByteRange>? CalculateAffectedRegions(Patch fromPatch, Patch toPatch)
         {
-            var ret = new List<Range>();
+            var ret = new List<ByteRange>();
             if (fromPatch == toPatch) return ret;
             var startI = _Patches.IndexOf(fromPatch);
             var endI = _Patches.IndexOf(toPatch);
@@ -345,7 +342,7 @@ namespace SpawnDev.PatchStreams
                 for (var i = startI + 1; i <= endI; i++)
                 {
                     var patch = _Patches[i];
-                    var range = new Range(patch.ChangeOffset, patch.AffectedByteCount);
+                    var range = new ByteRange(patch.ChangeOffset, patch.AffectedByteCount);
                     ret.Add(range);
                 }
             }
@@ -355,14 +352,14 @@ namespace SpawnDev.PatchStreams
                 for (var i = startI; i > endI; i--)
                 {
                     var patch = _Patches[i];
-                    var range = new Range(patch.ChangeOffset, patch.AffectedByteCount);
+                    var range = new ByteRange(patch.ChangeOffset, patch.AffectedByteCount);
                     ret.Add(range);
                 }
             }
             // ranges have to be sorted before merging
             ret = ret.OrderBy(o => o.Start).ToList();
             // merge ranges
-            var tmp = new List<Range>();
+            var tmp = new List<ByteRange>();
             foreach (var item in ret)
             {
                 var last = tmp.LastOrDefault();
@@ -468,6 +465,27 @@ namespace SpawnDev.PatchStreams
         {
             var streams = _Patches.SelectMany(o => o.Sources).Distinct();
             return streams;
+        }
+        /// <summary>
+        /// Returns true if there are patches that can be flushed to the original stream.<br/>
+        /// PatchStream must have been created with a single, writable stream.
+        /// </summary>
+        /// <returns></returns>
+        public bool CanFlush()
+        {
+            if (_Patches.Count < 2) return false;
+            if (_PatchIndex == 0) return false;
+            // When flush is called, check if the first Patch is a single, Writable stream.
+            // If it is, get all affected regions from the current patch to the first
+            // then copy all affected regions to the first
+            var originalPatch = Patches.First();
+            var originalSources = originalPatch.Sources;
+            if (originalSources.Count != 1) return false;
+            var destinationStream = originalSources[0];
+            // the destination stream must be writable
+            if (!destinationStream.CanWrite) return false;
+            var affectedRegions = CalculateAffectedRegions(Patch, originalPatch);
+            return affectedRegions != null && affectedRegions.Count > 0;
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
@@ -638,22 +656,22 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public PatchStream Slice(long start, long size)
         {
-            var source = Sources;
-            var offset = start + Offset;
-            var newList = new List<Stream>();
-            foreach (var s in source)
-            {
-                if (s == null || s.Length == 0) continue;
-                if (offset > 0 && s.Length < offset)
-                {
-                    offset -= s.Length;
-                    continue;
-                }
-                newList.Add(s);
-                var totalSize = newList.Sum(o => o.Length) - offset;
-                if (totalSize >= size) break;
-            }
-            return new PatchStream(newList, offset, size);
+            //var source = Sources;
+            //var offset = start + Offset;
+            //var newList = new List<Stream>();
+            //foreach (var s in source)
+            //{
+            //    if (s == null || s.Length == 0) continue;
+            //    if (offset > 0 && s.Length < offset)
+            //    {
+            //        offset -= s.Length;
+            //        continue;
+            //    }
+            //    newList.Add(s);
+            //    var totalSize = newList.Sum(o => o.Length) - offset;
+            //    if (totalSize >= size) break;
+            //}
+            return new PatchStream(Sources, start + Offset, size);
         }
         /// <summary>
         /// Returns a new MultiStreamSegment based on this SegmentSource, optionally with data removed, replaced, or inserted as specified<br/>
