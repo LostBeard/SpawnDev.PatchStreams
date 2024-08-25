@@ -489,7 +489,7 @@ namespace SpawnDev.PatchStreams
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
-        /// Because we have modified an underlying source, all Patches, except the first, will be discarded.<br/>
+        /// Because we have modified an underlying source, all Patches will be discarded.<br/>
         /// As far as any viewers of this stream are concerned, no data has changed<br/>
         /// This cannot be undone.
         /// </summary>
@@ -532,7 +532,7 @@ namespace SpawnDev.PatchStreams
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
-        /// Because we have modified an underlying source, all Patches, except the first, will be discarded.<br/>
+        /// Because we have modified an underlying source, all Patches will be discarded.<br/>
         /// As far as any viewers of this stream are concerned, no data has changed<br/>
         /// This cannot be undone.
         /// </summary>

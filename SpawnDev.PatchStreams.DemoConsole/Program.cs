@@ -6,15 +6,17 @@
 var memStream = new MemoryStream();
 memStream.WriteByte((byte)'Q');
 memStream.Position = 0;
-var patchStream = new PatchStream(memStream, 1);
+var patchStream = new PatchStream();
 
 patchStream.OnChanged += PatchStream_OnChanged;
 
-void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<SpawnDev.PatchStreams.Range> affectedRegions)
+void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<ByteRange> affectedRegions)
 {
-    foreach(var range in affectedRegions)
+    var i = 0;
+    Console.WriteLine($"Regions changed: {affectedRegions.Count()}");
+    foreach (var range in affectedRegions)
     {
-        Console.WriteLine($"Changed: {range.Start} {range.Size}");
+        Console.WriteLine($"- {i} start: {range.Start} size: {range.Size}");
     }
 }
 
@@ -25,6 +27,7 @@ patchStream.Write("world!");
 patchStream.InsertWrites = true;
 patchStream.Position = 0;
 patchStream.Write("Hello ");
+patchStream.Flush();
 
 // patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
@@ -44,11 +47,6 @@ Console.WriteLine(patchStream.ToString(true));
 patchStream.InsertWrites = true;
 patchStream.Position = 0;
 patchStream.Write("Presenting: ");
-
-// Flush all patches to the initial source (flush requires writable initial source)
-patchStream.Flush();
-Console.WriteLine(patchStream.ToString(true));
-
 
 patchStream.InsertWrites = false;
 patchStream.Position = 0;
