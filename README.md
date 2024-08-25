@@ -41,7 +41,7 @@ patchStream.Write("Presenting: ");
 patchStream.Delete();
 // test data is now "" and patchStream.Length == 0
 Console.WriteLine("Empty ->" + patchStream.ToString(true));
-// undo the last modification, which was or Delete
+// undo the last modification, which was a Delete()
 patchStream.Undo();
 // test data is now "Presenting: Hello DotNet!"
 Console.WriteLine(patchStream.ToString(true));
