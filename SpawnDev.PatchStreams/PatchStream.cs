@@ -797,7 +797,8 @@ namespace SpawnDev.PatchStreams
             return Encoding.UTF8.GetString(ret);
         }
         /// <summary>
-        /// Returns the stream as a string starting from the current position or the beginning if fullBuffer is true
+        /// Returns the stream as a string starting from the current position or the beginning if fullBuffer is true<br/>
+        /// Position is modified if fullBuffer == false
         /// </summary>
         /// <returns></returns>
         public string ToString(bool fullBuffer)
@@ -808,6 +809,20 @@ namespace SpawnDev.PatchStreams
             var str = ToString();
             Position = pos;
             return str;
+        }
+        /// <summary>
+        /// Returns the stream as a byte array starting from the current position or the beginning if fullBuffer is true<br/>
+        /// Position is modified if fullBuffer == false
+        /// </summary>
+        /// <returns></returns>
+        public byte[] ToArray(bool fullBuffer)
+        {
+            if (!fullBuffer) return ToArray();
+            var pos = Position;
+            Position = 0;
+            var ret = ToArray();
+            Position = pos;
+            return ret;
         }
     }
 }

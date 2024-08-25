@@ -25,13 +25,13 @@ patchStream.Position = 0;
 patchStream.Write("Hello ");
 // set restore point for the current patch. we can revert back later
 patchStream.RestorePoint = true;
-// test data is now "Hello world!"
+// patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
 // overwrite "world!" with "DotNet!"
 patchStream.InsertWrites = false;
 patchStream.Position = 6;
 patchStream.Write("DotNet!");
-// test data is now "Hello DotNet!"
+// patchStream data is now "Hello DotNet!"
 Console.WriteLine(patchStream.ToString(true));
 // prepend "Hello "
 patchStream.InsertWrites = true;
@@ -39,14 +39,14 @@ patchStream.Position = 0;
 patchStream.Write("Presenting: ");
 // delete data
 patchStream.Delete();
-// test data is now "" and patchStream.Length == 0
+// patchStream data is now "" and patchStream.Length == 0
 Console.WriteLine("Empty ->" + patchStream.ToString(true));
 // undo the last modification, which was a Delete()
 patchStream.Undo();
-// test data is now "Presenting: Hello DotNet!"
+// patchStream data is now "Presenting: Hello DotNet!"
 Console.WriteLine(patchStream.ToString(true));
 // go to the most recent restore point
 patchStream.RestorePointUndo();
-// test data is now "Hello world!"
+// patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
 ```
