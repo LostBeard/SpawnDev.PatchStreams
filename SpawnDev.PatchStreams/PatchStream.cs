@@ -1,5 +1,7 @@
 ﻿using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Text;
+using System.Threading;
 
 namespace SpawnDev.PatchStreams
 {
@@ -168,7 +170,8 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         /// <param name="sender">The event sender</param>
         /// <param name="overwrittenPatches">The patches overwritten by the change, if any</param>
-        public delegate void ChangedEvent(PatchStream sender, IEnumerable<Patch> overwrittenPatches);
+        /// <param name="affectedRegions">The stream regions that were affected by the change</param>
+        public delegate void ChangedEvent(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<Range> affectedRegions);
         /// <summary>
         /// Fired when Streams are no longer needed by this stream
         /// </summary>
@@ -203,7 +206,7 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(IEnumerable<byte[]> source) => UpdateSource(source);
+        public PatchStream(IEnumerable<byte[]> source) => UpdateSource(source.Select(o => new MemoryStream(o)));
         /// <summary>
         /// Creates an new instance
         /// </summary>
@@ -211,15 +214,15 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(Stream source) => UpdateSource(source);
+        public PatchStream(Stream source) => UpdateSource(new[] { source });
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(byte[] source) => UpdateSource(source);
+        public PatchStream(byte[] source) => UpdateSource(new[] { new MemoryStream(source) });
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(IEnumerable<byte[]> source, long offset) => UpdateSource(source, offset);
+        public PatchStream(IEnumerable<byte[]> source, long offset) => UpdateSource(source.Select(o => new MemoryStream(o)), offset);
         /// <summary>
         /// Creates an new instance
         /// </summary>
@@ -227,15 +230,15 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(Stream source, long offset) => UpdateSource(source, offset);
+        public PatchStream(Stream source, long offset) => UpdateSource(new[] { source }, offset);
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(byte[] source, long offset) => UpdateSource(source, offset);
+        public PatchStream(byte[] source, long offset) => UpdateSource(new[] { new MemoryStream(source) }, offset);
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(IEnumerable<byte[]> source, long offset, long size) => UpdateSource(source, offset, size);
+        public PatchStream(IEnumerable<byte[]> source, long offset, long size) => UpdateSource(source.Select(o => new MemoryStream(o)), offset, size);
         /// <summary>
         /// Creates an new instance
         /// </summary>
@@ -243,40 +246,44 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(Stream source, long offset, long size) => UpdateSource(source, offset, size);
+        public PatchStream(Stream source, long offset, long size) => UpdateSource(new[] { source }, offset, size);
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(byte[] source, long offset, long size) => UpdateSource(source, offset, size);
-        private void UpdateSource(byte[] source, long offset, long size) => UpdateSource(new MemoryStream(source), offset, size);
-        private void UpdateSource(byte[] source, long offset) => UpdateSource(new MemoryStream(source), offset, source.Length - offset);
-        private void UpdateSource(byte[] source) => UpdateSource(new MemoryStream(source), 0, source.Length);
-        private void UpdateSource(Stream source, long offset, long size) => UpdateSource(new Stream[] { source }, offset, size);
-        private void UpdateSource(Stream source, long offset) => UpdateSource(new Stream[] { source }, offset, source.Length - offset);
-        private void UpdateSource(Stream source) => UpdateSource(new Stream[] { source }, 0, source.Length);
-        private void UpdateSource(IEnumerable<byte[]> source) => UpdateSource(source, 0, source.Sum(o => o.Length));
-        private void UpdateSource(IEnumerable<byte[]> source, long offset) => UpdateSource(source, offset, source.Sum(o => o.Length) - offset);
-        private void UpdateSource(IEnumerable<byte[]> source, long offset, long size) => UpdateSource(source.Select(o => new MemoryStream(o)), offset, size);
-        private void UpdateSource(IEnumerable<Stream> source) => UpdateSource(source, 0, source.Sum(o => o.Length));
-        private void UpdateSource(IEnumerable<Stream> source, long offset) => UpdateSource(source, offset, source.Sum(o => o.Length) - offset);
-        private void UpdateSource(IEnumerable<Stream> source, long offset, long size)
+        public PatchStream(byte[] source, long offset, long size) => UpdateSource(new[] { new MemoryStream(source) }, offset, size);
+        private void UpdateSource(IEnumerable<Stream> source, long offset = 0, long size = -1, long changeOffset = 0, long deletedByteCount = 0, long insertedByteCount = 0, long affectedByteCount = 0)
         {
+            if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+            var maxSize = source.Sum(o => o.Length);
+            if (offset > maxSize) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (size < 0) size = maxSize - offset;
             var newList = new List<Stream>();
-            foreach (var s in source)
+            if (_PatchIndex == -1 && source.Count() == 1 && source.First().Length == 0)
             {
-                if (s == null || s.Length == 0) continue;
-                if (offset > 0 && s.Length < offset)
-                {
-                    offset -= s.Length;
-                    continue;
-                }
-                newList.Add(s);
-                var totalSize = newList.Sum(o => o.Length) - offset;
-                if (totalSize >= size) break;
+                newList.AddRange(source);
             }
-            var patchIndex = PatchIndex + 1;
-            size = Math.Min(size, newList.Sum(o => o.Length) - offset);
-            var patch = new Patch(patchIndex, newList, offset, size);
+            else
+            {
+                foreach (var s in source)
+                {
+                    var totalSize = newList.Sum(o => o.Length) - offset;
+                    if (totalSize >= size) break;
+                    // _PatchIndex == 0 sources are allowed to have an empty stream for use if data is Flushed, but only if a single empty source is given
+                    if (s == null || s.Length == 0) continue;
+                    if (offset > 0 && s.Length < offset)
+                    {
+                        offset -= s.Length;
+                        continue;
+                    }
+                    newList.Add(s);
+                }
+            }
+            var patchIndex = _PatchIndex + 1;
+            if (patchIndex == 0)
+            {
+                insertedByteCount = size;
+            }
+            var patch = new Patch(patchIndex, newList, offset, size, changeOffset, deletedByteCount, insertedByteCount, affectedByteCount);
             var overwritePatchesCount = _Patches.Count - patchIndex;
             var isLatestPatch = overwritePatchesCount == 0;
             if (overwritePatchesCount > 0)
@@ -285,39 +292,99 @@ namespace SpawnDev.PatchStreams
                 _Patches.RemoveRange(patchIndex, overwritePatchesCount);
             }
             var overwrittenPatches = overwritePatchesCount <= 0 ? Enumerable.Empty<Patch>() : _Patches.Skip(patchIndex).ToList();
-            var anyRestorePointsRemoved = overwrittenPatches.Any(o => o.RestorePoint);
             _Patches.Add(patch);
             // the first patch is always marked as a restore point
-            if (patch.Index == 0) patch.RestorePoint = true;
+            IEnumerable<Range> affectedRegions;
+            if (patch.Index == 0)
+            {
+                patch.RestorePoint = true;
+                affectedRegions = Enumerable.Empty<Range>();
+            }
+            else
+            {
+                // calculate stream data regions that are affected by going from the current patch to 
+                affectedRegions = CalculateAffectedRegions(Patch, patch)!;
+            }
             // activate the new patch
             _PatchIndex = patchIndex;
             LastChanged = DateTime.Now;
-            OnChanged?.Invoke(this, overwrittenPatches);
-            if (anyRestorePointsRemoved || isLatestPatch)
-            {
-                // the latest patch is considered a temporary restore point
-                OnRestorePointsChanged?.Invoke(this);
-            }
+            OnChanged?.Invoke(this, overwrittenPatches, affectedRegions);
+            OnRestorePointsChanged?.Invoke(this);
         }
         /// <summary>
-        /// Returns a streams sources that are used by this streams patches
+        /// Returns a List of non-overlapping ranges representing regions of data that will be affected if switching from [fromPatchId] to [toPatchId]
         /// </summary>
-        /// <returns></returns>
-        public IEnumerable<Stream> GetUniqueStreams()
+        /// <param name="fromPatchId">The patch to start with</param>
+        /// <param name="toPatchId">The patch to end on</param>
+        /// <returns>a List of non-overlapping ranges representing regions of data affected by all changes between the specified patches</returns>
+        public List<Range>? CalculateAffectedRegions(string fromPatchId, string toPatchId)
         {
-            var streams = _Patches.SelectMany(o => o.Sources).Distinct();
-            return streams;
+            var fromPatch = _Patches.FirstOrDefault(o => o.Id == fromPatchId);
+            if (fromPatch == null) return null;
+            var toPatch = _Patches.FirstOrDefault(o => o.Id == toPatchId);
+            if (toPatch == null) return null;
+            return CalculateAffectedRegions(fromPatch, toPatch);
         }
         /// <summary>
-        /// Move to the previous Patch in Patches, if there is one
+        /// Returns a List of non-overlapping ranges representing regions of data that will be affected if switching from [fromPatch] to [toPatch]
         /// </summary>
-        /// <returns></returns>
-        public bool Undo() => Restore(PatchIndex - 1);
-        /// <summary>
-        /// Move to the next Patch in Patches, if there is one
-        /// </summary>
-        /// <returns></returns>
-        public bool Redo() => Restore(PatchIndex + 1);
+        /// <param name="fromPatch">The patch to start with</param>
+        /// <param name="toPatch">The patch to end on</param>
+        /// <returns>a List of non-overlapping ranges representing regions of data affected by all changes between the specified patches</returns>
+        public List<Range>? CalculateAffectedRegions(Patch fromPatch, Patch toPatch)
+        {
+            var ret = new List<Range>();
+            if (fromPatch == toPatch) return ret;
+            var startI = _Patches.IndexOf(fromPatch);
+            var endI = _Patches.IndexOf(toPatch);
+            // if either is no longer in the Patches list return null
+            if (startI == -1 || endI == -1) return null;
+            if (startI < endI)
+            {
+                // ranges from every patch starting at [from] + 1 -> [to] are collected
+                for (var i = startI + 1; i <= endI; i++)
+                {
+                    var patch = _Patches[i];
+                    var range = new Range(patch.ChangeOffset, patch.AffectedByteCount);
+                    ret.Add(range);
+                }
+            }
+            else
+            {
+                // ranges from every patch starting at [from] -> [to + 1] are collected
+                for (var i = startI; i > endI; i--)
+                {
+                    var patch = _Patches[i];
+                    var range = new Range(patch.ChangeOffset, patch.AffectedByteCount);
+                    ret.Add(range);
+                }
+            }
+            // ranges have to be sorted before merging
+            ret = ret.OrderBy(o => o.Start).ToList();
+            // merge ranges
+            var tmp = new List<Range>();
+            foreach (var item in ret)
+            {
+                var last = tmp.LastOrDefault();
+                if (last == null)
+                {
+                    tmp.Add(item);
+                }
+                else
+                {
+                    if (item.Start < last.EndPos)
+                    {
+                        last.EndPos = Math.Max(last.EndPos, item.EndPos);
+                    }
+                    else
+                    {
+                        tmp.Add(item);
+                    }
+                }
+            }
+            // return non-overlapping affected regions
+            return tmp;
+        }
         /// <summary>
         /// Set the active patch by patchId
         /// </summary>
@@ -342,9 +409,11 @@ namespace SpawnDev.PatchStreams
             {
                 return true;
             }
+            var patch = _Patches[patchIndex];
+            var affectedRegions = CalculateAffectedRegions(Patch, patch);
             _PatchIndex = patchIndex;
             LastChanged = DateTime.Now;
-            OnChanged?.Invoke(this, Enumerable.Empty<Patch>());
+            OnChanged?.Invoke(this, Enumerable.Empty<Patch>(), affectedRegions!);
             return true;
         }
         /// <summary>
@@ -372,6 +441,16 @@ namespace SpawnDev.PatchStreams
             return Restore(lastRestorePointBeforeThisPatch.Index);
         }
         /// <summary>
+        /// Move to the previous Patch in Patches, if there is one
+        /// </summary>
+        /// <returns></returns>
+        public bool Undo() => Restore(PatchIndex - 1);
+        /// <summary>
+        /// Move to the next Patch in Patches, if there is one
+        /// </summary>
+        /// <returns></returns>
+        public bool Redo() => Restore(PatchIndex + 1);
+        /// <summary>
         /// Returns true if there is previous Patch
         /// </summary>
         public bool CanUndo => PatchIndex > 0;
@@ -380,9 +459,149 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public bool CanRedo => PatchIndex < _Patches.Count - 1;
         /// <summary>
-        /// Not implemented
+        /// Returns a streams sources that are used by this streams patches
         /// </summary>
-        public override void Flush() { }
+        /// <returns></returns>
+        public IEnumerable<Stream> GetUniqueStreams()
+        {
+            var streams = _Patches.SelectMany(o => o.Sources).Distinct();
+            return streams;
+        }
+        /// <summary>
+        /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
+        /// </summary>
+        public override void Flush()
+        {
+            if (_Patches.Count < 2) return;
+            if (_PatchIndex == 0) return;
+            // When flush is called, check if the first Patch is a single, Writable stream.
+            // If it is, get all affected regions from the current patch to the first
+            // then copy all affected regions to the first
+            var originalPatch = Patches.First();
+            var originalSources = originalPatch.Sources;
+            Stream? destStream = null;
+            var destOffset = originalPatch.Offset;
+            if (originalSources.Count == 1)
+            {
+                destStream = originalSources[0];
+            }
+            else
+            {
+                // single stream required
+                return;
+            }
+            if (!destStream.CanWrite)
+            {
+                return;
+            }
+            var sourcePatch = Patch;
+            var affectRegions = CalculateAffectedRegions(sourcePatch, originalPatch);
+            if (affectRegions == null || !affectRegions.Any())
+            {
+                return;
+            }
+            // copy regions into destinationStream starting at destOffset
+            foreach (var region in affectRegions)
+            {
+                Position = region.Start;
+                destStream.Position = region.Start + destOffset;
+                // copy region.Size bytes to destStream
+                CopyStream(destStream, (int)region.Size);
+            }
+            // verify stream length is correct
+            if (destStream.Length != Length + destOffset)
+            {
+                destStream.SetLength(Length + destOffset);
+            }
+            // because we have modified an underlying source, all Patches, except the first, will be discarded
+            _PatchIndex = -1;
+            Position = 0;
+            UpdateSource(originalPatch.Sources, originalPatch.Offset);
+        }
+        public override async Task FlushAsync(CancellationToken cancellationToken)
+        {
+            if (_Patches.Count < 2) return;
+            if (_PatchIndex == 0) return;
+            // TODO
+            // When flush is called, check if the first Patch is a single, Writable stream.
+            // If it is, get all affected regions from the current patch to the first
+            // then copy all affected regions to the first
+            var originalPatch = Patches.First();
+            var originalSources = originalPatch.Sources;
+            Stream? destStream = null;
+            var destOffset = originalPatch.Offset;
+            if (originalSources.Count == 1)
+            {
+                destStream = originalSources[0];
+            }
+            else
+            {
+                // single stream required
+                return;
+            }
+            if (!destStream.CanWrite)
+            {
+                return;
+            }
+            var sourcePatch = Patch;
+            var affectRegions = CalculateAffectedRegions(sourcePatch, originalPatch);
+            if (affectRegions == null || !affectRegions.Any())
+            {
+                return;
+            }
+            // copy regions into destinationStream starting at destOffset
+            foreach (var region in affectRegions)
+            {
+                Position = region.Start;
+                destStream.Position = region.Start + destOffset;
+                // copy region.Size bytes to destStream
+                await CopyStreamAsync(destStream, (int)region.Size, cancellationToken);
+            }
+            // verify stream length is correct
+            if (destStream.Length != Length + destOffset)
+            {
+                destStream.SetLength(Length + destOffset);
+            }
+            // ...
+            // because we have modified an underlying source, all Patches, except the first, will be discarded
+            _PatchIndex = -1;
+            Position = 0;
+            UpdateSource(originalPatch.Sources, originalPatch.Offset);
+            // 
+        }
+        /// <summary>
+        /// Copies the specified number of bytes from this stream, starting at the specified position, to the destination stream
+        /// </summary>
+        /// <param name="destination"></param>
+        /// <param name="bytes"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        public async Task CopyStreamAsync(Stream destination, int bytes, CancellationToken cancellationToken)
+        {
+            byte[] buffer = new byte[81920];
+            int read;
+            while (bytes > 0 && (read = await ReadAsync(buffer, 0, Math.Min(buffer.Length, bytes), cancellationToken)) > 0)
+            {
+                await destination.WriteAsync(buffer, 0, read, cancellationToken);
+                bytes -= read;
+            }
+        }
+        /// <summary>
+        /// Copies the specified number of bytes from this stream, starting at the specified position, to the destination stream
+        /// </summary>
+        /// <param name="destination"></param>
+        /// <param name="bytes"></param>
+        /// <returns></returns>
+        public void CopyStream(Stream destination, int bytes)
+        {
+            byte[] buffer = new byte[81920];
+            int read;
+            while (bytes > 0 && (read = Read(buffer, 0, Math.Min(buffer.Length, bytes))) > 0)
+            {
+                destination.Write(buffer, 0, read);
+                bytes -= read;
+            }
+        }
         /// <summary>
         /// Not implemented
         /// </summary>
@@ -403,7 +622,7 @@ namespace SpawnDev.PatchStreams
             Position += count;
         }
         /// <summary>
-        /// When true, writes will is insert mode instead of over-write mode
+        /// When true, writes will insert data instead writing over data
         /// </summary>
         public bool InsertWrites { get; set; }
         /// <summary>
@@ -454,7 +673,7 @@ namespace SpawnDev.PatchStreams
         /// Returns a new MultiStreamSegment based on this SegmentSource, optionally with data removed, replaced, or inserted as specified<br/>
         /// This streams Position is restored before this method returns
         /// </summary>
-        /// <param name="start">The position start start adding the data from addStreams, and the position to repalce the specified amount of data</param>
+        /// <param name="start">The position start start adding the data from addStreams, and the position to replace the specified amount of data</param>
         /// <param name="replaceLength">The number of bytes to replace. -1 can be used to indicate no data from start on will be used</param>
         /// <param name="addStreams">Streams to add at start position</param>
         /// <returns>A new MultiStreamSegment</returns>
@@ -472,7 +691,7 @@ namespace SpawnDev.PatchStreams
                 }
             }
             pos = start + replaceLength;
-            // add insert streams if any
+            // insert streams if any
             if (addStreams != null) streams.AddRange(addStreams);
             // add anything left in this source
             if (pos < Length)
@@ -498,18 +717,20 @@ namespace SpawnDev.PatchStreams
         public long Delete(long length)
         {
             if (length < 0) length = Length;
-            length = Math.Min(length, Length - Position);
+            var bytesLeft = Length - Position;
+            length = Math.Min(length, bytesLeft);
             if (length > 0) Splice(Position, length, Array.Empty<Stream>());
             return length;
         }
         /// <summary>
-        /// Creates a new empty patch and enables it
+        /// Deletes all stream data<br/>
+        /// As with all PatchStream operations, this is undoable and no data is actualyl deleted.
         /// </summary>
         /// <returns></returns>
-        public void Delete()
+        public long Delete()
         {
-            if (Length == 0) return;
-            UpdateSource(Array.Empty<Stream>());
+            Position = 0;
+            return Delete(-1);
         }
         /// <summary>
         /// Insert data into this stream<br/>
@@ -578,53 +799,6 @@ namespace SpawnDev.PatchStreams
         /// <param name="replaceLength">The amount of data to overwrite. Default is 0</param>
         /// <returns>The number of bytes written</returns>
         public long Insert(IEnumerable<byte[]> data, long replaceLength = 0) => Insert(data.Select(o => new MemoryStream(o)), replaceLength);
-        ///// <summary>
-        ///// Insert data into this stream<br/>
-        ///// A new patch will be created, and any patch data after the current patch will be discarded
-        ///// </summary>
-        ///// <param name="start">The position to start writing to</param>
-        ///// <param name="data">The data to write</param>
-        ///// <param name="replaceLength">The amount of data to overwrite. Default is 0</param>
-        ///// <returns>The number of bytes written</returns>
-        //public long Insert(long start, Stream data, long replaceLength = 0)
-        //{
-        //    var dataSize = data.Length;
-        //    Splice(start, replaceLength, data);
-        //    return dataSize;
-        //}
-        ///// <summary>
-        ///// Insert data into this stream<br/>
-        ///// A new patch will be created, and any patch data after the current patch will be discarded
-        ///// </summary>
-        ///// <param name="start">The position to start writing to</param>
-        ///// <param name="data">The data to write</param>
-        ///// <param name="replaceLength">The amount of data to overwrite. Default is 0</param>
-        ///// <returns>The number of bytes written</returns>
-        //public long Insert(long start, byte[] data, long replaceLength = 0) => Insert(start, new MemoryStream(data), replaceLength);
-        ///// <summary>
-        ///// Insert data into this stream<br/>
-        ///// A new patch will be created, and any patch data after the current patch will be discarded
-        ///// </summary>
-        ///// <param name="start">The position to start writing to</param>
-        ///// <param name="streams">The data to write</param>
-        ///// <param name="replaceLength">The amount of data to overwrite. Default is 0</param>
-        ///// <returns>The number of bytes written</returns>
-        //public long Insert(long start, IEnumerable<Stream> streams, long replaceLength = 0)
-        //{
-        //    var data = streams.ToArray();
-        //    var dataSize = data.Sum(o => o.Length);
-        //    Splice(start, replaceLength, data);
-        //    return dataSize;
-        //}
-        /// <summary>
-        /// Insert data into this stream<br/>
-        /// A new patch will be created, and any patch data after the current patch will be discarded
-        /// </summary>
-        /// <param name="start">The position to start writing to</param>
-        /// <param name="data">The data to write</param>
-        /// <param name="replaceLength">The amount of data to overwrite. Default is 0</param>
-        /// <returns>The number of bytes written</returns>
-        //public long Insert(long start, IEnumerable<byte[]> data, long replaceLength = 0) => Insert(start, data.Select(o => new MemoryStream(o)), replaceLength);
         /// <summary>
         /// Write 0 or more bytes to the stream starting at position [start] and overwriting [replaceLength] bytes
         /// </summary>
@@ -637,37 +811,56 @@ namespace SpawnDev.PatchStreams
         /// Write 0 or more bytes to the stream starting at position [start] and overwriting [replaceLength] bytes
         /// </summary>
         /// <param name="start">The position to start writing to</param>
-        /// <param name="replaceLength">The amount of data to overwrite</param>
+        /// <param name="deleteCount">
+        /// An integer indicating the number of elements in the array to remove from start.<br/>
+        /// If deleteCount &lt; 0, all data from `start` to the end of the stream will be deleted.<br/>
+        /// If deleteCount == 0, no data will be deleted. In this case, you should specify at least one new element.
+        /// </param>
         /// <param name="addStreams">The data to write</param>
         /// <returns>The number of bytes written</returns>
-        public long Splice(long start, long replaceLength, params Stream[] addStreams)
+        public long Splice(long start, long deleteCount, params Stream[] addStreams)
         {
-            long bytesWritten = 0;
+            if (start > Length || start < 0) throw new ArgumentOutOfRangeException(nameof(start));
+            var deleteCountMax = Length - start;
+            if (deleteCount < 0) deleteCount = deleteCountMax;
+            if (deleteCount > deleteCountMax) deleteCount = deleteCountMax;
+            long insertCount = addStreams?.Sum(o => o.Length) ?? 0;
+            if (insertCount == 0 && deleteCount == 0)
+            {
+                // nothing changed.
+                return 0;
+            }
             long pos = 0;
             var streams = new List<Stream>();
             if (start > 0)
             {
                 var preSlice = Slice(0, start);
                 streams.Add(preSlice);
-                if (replaceLength < 0)
+                if (deleteCount < 0)
                 {
                     pos = Length;
                 }
             }
-            pos = start + replaceLength;
+            pos = start + deleteCount;
             // add insert streams if any
             if (addStreams != null)
             {
                 streams.AddRange(addStreams);
-                bytesWritten = addStreams.Sum(o => o.Length);
             }
             // add anything left in this source
             if (pos < Length)
             {
                 streams.Add(Slice(pos, Length - pos));
             }
-            UpdateSource(streams);
-            return bytesWritten;
+            // get the number of bytes in the current stream state that are affected by this change
+            // if delete count == insert count
+            // then affected = delete count
+            // else affected = max(new length, old length) - start
+            var newSize = Length - deleteCount + insertCount;
+            var affectedMax = Math.Max(newSize, Length) - start;
+            var affectedBytes = deleteCount == insertCount ? insertCount : affectedMax;
+            UpdateSource(streams, 0, -1, start, deleteCount, insertCount, affectedBytes);
+            return insertCount;
         }
         /// <summary>
         /// Read data from the underlying source
@@ -793,12 +986,7 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public string ToString(bool fullBuffer)
         {
-            if (!fullBuffer) return ToString();
-            var pos = Position;
-            Position = 0;
-            var str = ToString();
-            Position = pos;
-            return str;
+            return Encoding.UTF8.GetString(ToArray(fullBuffer));
         }
         /// <summary>
         /// Returns the stream as a byte array starting from the current position or the beginning if fullBuffer is true<br/>

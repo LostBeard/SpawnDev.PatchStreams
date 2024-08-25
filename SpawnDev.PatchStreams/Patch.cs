@@ -40,9 +40,26 @@
         /// </summary>
         public long Size { get; init; }
         /// <summary>
+        /// The position at which changes made by this patch start<br/>
+        /// This and change start pos contains information about what data a change has affected
+        /// </summary>
+        public long ChangeOffset { get; init; }
+        /// <summary>
+        /// The number of bytes deleted from the stream starting at position [ChangeOffset] before data was added (if any)
+        /// </summary>
+        public long DeletedByteCount { get; init; }
+        /// <summary>
+        /// The number of bytes inserted into the stream starting at position [ChangeOffset] after [DeletedByteCount] bytes were deleted
+        /// </summary>
+        public long InsertedByteCount { get; init; }
+        /// <summary>
+        /// The number of bytes that this patch affected in the previous patch
+        /// </summary>
+        public long AffectedByteCount { get; init; }
+        /// <summary>
         /// Creates a new patch
         /// </summary>
-        public Patch(int index, List<Stream> sources, long offset, long size)
+        public Patch(int index, List<Stream> sources, long offset, long size, long changeOffset, long deletedByteCount, long insertedByteCount, long affectedByteCount)
         {
             Id = Guid.NewGuid().ToString();
             Index = index;
@@ -50,6 +67,10 @@
             Offset = offset;
             Size = size;
             Created = DateTime.Now;
+            ChangeOffset = changeOffset;
+            DeletedByteCount = deletedByteCount;
+            InsertedByteCount = insertedByteCount;
+            AffectedByteCount = affectedByteCount;
         }
     }
 }

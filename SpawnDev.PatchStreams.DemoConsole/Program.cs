@@ -2,7 +2,22 @@
 
 // Create a new PatchStream with or without source data.
 // Source data and data added to PatchStream should not be modified once it is added
-var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
+//var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
+var memStream = new MemoryStream();
+memStream.WriteByte((byte)'Q');
+memStream.Position = 0;
+var patchStream = new PatchStream(memStream, 1);
+
+patchStream.OnChanged += PatchStream_OnChanged;
+
+void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPatches, IEnumerable<SpawnDev.PatchStreams.Range> affectedRegions)
+{
+    foreach(var range in affectedRegions)
+    {
+        Console.WriteLine($"Changed: {range.Start} {range.Size}");
+    }
+}
+
 patchStream.Write("world!");
 // patchStream data is now "world!"
 
@@ -30,6 +45,18 @@ patchStream.InsertWrites = true;
 patchStream.Position = 0;
 patchStream.Write("Presenting: ");
 
+patchStream.Flush();
+Console.WriteLine(patchStream.ToString(true));
+
+
+patchStream.InsertWrites = false;
+patchStream.Position = 0;
+patchStream.Write("Presen1ing: ");
+patchStream.Position = 1;
+patchStream.Write("resenting: ");
+patchStream.Position = 0;
+patchStream.InsertWrites = true;
+
 // delete data
 patchStream.Delete();
 
@@ -47,3 +74,15 @@ patchStream.RestorePointUndo();
 
 // patchStream data is now "Hello world!"
 Console.WriteLine(patchStream.ToString(true));
+
+patchStream.InsertWrites = false;
+patchStream.Position = 6;
+patchStream.Write("Blazor");
+Console.WriteLine(patchStream.ToString(true));
+
+
+foreach (var patch in patchStream.Patches)
+{
+    Console.WriteLine($"{patch.Index} {patch.Size} {patch.ChangeOffset} {patch.DeletedByteCount} {patch.InsertedByteCount}");
+}
+var nmttt = true;
