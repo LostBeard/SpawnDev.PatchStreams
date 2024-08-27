@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO;
+using System.Text;
 
 namespace SpawnDev.PatchStreams
 {
@@ -202,7 +203,12 @@ namespace SpawnDev.PatchStreams
         public override long Position
         {
             get => Math.Max(0, Math.Min(_Position, Length));
-            set => _Position = value;
+            set
+            {
+                if (value < 0) throw new ArgumentOutOfRangeException(nameof(Position));
+                if (value > Length) throw new ArgumentOutOfRangeException(nameof(Position));
+                _Position = value;
+            }
         }
         private long _Position { get; set; } = 0;
         /// <summary>
@@ -710,22 +716,20 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public PatchStream Slice(long start, long size)
         {
-            //var source = Sources;
-            //var offset = start + Offset;
-            //var newList = new List<Stream>();
-            //foreach (var s in source)
-            //{
-            //    if (s == null || s.Length == 0) continue;
-            //    if (offset > 0 && s.Length < offset)
-            //    {
-            //        offset -= s.Length;
-            //        continue;
-            //    }
-            //    newList.Add(s);
-            //    var totalSize = newList.Sum(o => o.Length) - offset;
-            //    if (totalSize >= size) break;
-            //}
             return new PatchStream(Sources, start + Offset, size);
+        }
+        /// <summary>
+        /// Returns a new PatchStream slice with [size] bytes of data from position [start]<br/>
+        /// and deletes the data from this Stream
+        /// </summary>
+        /// <param name="start"></param>
+        /// <param name="size"></param>
+        /// <returns></returns>
+        public PatchStream Cut(long start, long size)
+        {
+            var cut = Slice(start, size);
+            Delete(start, size);
+            return cut;
         }
         /// <summary>
         /// Returns a new MultiStreamSegment based on this SegmentSource, optionally with data removed, replaced, or inserted as specified<br/>
@@ -866,6 +870,23 @@ namespace SpawnDev.PatchStreams
         /// <returns>The number of bytes written</returns>
         public long Splice(long start, long replaceLength, params byte[][] addBytes) => Splice(start, replaceLength, addBytes.Select(o => new MemoryStream(o)).ToArray());
         /// <summary>
+        /// Cuts [length] bytes from the stream at position [sourceStart] and inserts it at position [destination]
+        /// </summary>
+        /// <param name="start">The position to cut data from</param>
+        /// <param name="destination">The position to paste the data</param>
+        /// <param name="length">The amount of data to relocate</param>
+        public void Move(long start, long destination, long length)
+        {
+            if (length == 0) return;
+            if (start == destination) return;
+            if (length == -1)
+            {
+                length = Length - start;
+            }
+            var cut = Cut(start, length);
+            Splice(destination, 0, cut);
+        }
+        /// <summary>
         /// Write 0 or more bytes to the stream starting at position [start] and overwriting [replaceLength] bytes
         /// </summary>
         /// <param name="start">The position to start writing to</param>
@@ -878,6 +899,10 @@ namespace SpawnDev.PatchStreams
         /// <returns>The number of bytes written</returns>
         public long Splice(long start, long deleteCount, params Stream[] addStreams)
         {
+            if (!WriteEnabled)
+            {
+                throw new InvalidOperationException("Stream writing has been disabled");
+            }
             if (start > Length || start < 0) throw new ArgumentOutOfRangeException(nameof(start));
             var deleteCountMax = Length - start;
             if (deleteCount < 0) deleteCount = deleteCountMax;

@@ -22,7 +22,11 @@ void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPat
     Console.WriteLine(string.Join(" ", sender.ToArray(true)));
 }
 
-patchStream.Insert("abcdef");
+patchStream.Insert("defabc");
+patchStream.Move(3, 1, -1);
+Console.WriteLine(string.Join(" ", patchStream.ToString(true)));
+
+
 patchStream.Position = 0;
 patchStream.Insert("123", 3);
 patchStream.Position = 6;
