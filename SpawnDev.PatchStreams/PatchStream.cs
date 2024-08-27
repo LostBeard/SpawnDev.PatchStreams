@@ -267,7 +267,7 @@ namespace SpawnDev.PatchStreams
                     if (totalSize >= size) break;
                     // _PatchIndex == 0 sources are allowed to have an empty stream for use if data is Flushed, but only if a single empty source is given
                     if (s == null || s.Length == 0) continue;
-                    if (offset > 0 && s.Length < offset)
+                    if (offset > 0 && s.Length <= offset && newList.Count == 0)
                     {
                         offset -= s.Length;
                         continue;
@@ -467,25 +467,25 @@ namespace SpawnDev.PatchStreams
             return streams;
         }
         /// <summary>
-        /// Returns true if there are patches that can be flushed to the original stream.<br/>
+        /// Returns the number of bytes that can be flushed to the original stream.<br/>
         /// PatchStream must have been created with a single, writable stream.
         /// </summary>
-        /// <returns></returns>
-        public bool CanFlush()
+        /// <returns>The number of bytes that will be written to the original stream</returns>
+        public long CanFlush()
         {
-            if (_Patches.Count < 2) return false;
-            if (_PatchIndex == 0) return false;
+            if (_Patches.Count < 2) return 0;
+            if (_PatchIndex == 0) return 0;
             // When flush is called, check if the first Patch is a single, Writable stream.
             // If it is, get all affected regions from the current patch to the first
             // then copy all affected regions to the first
             var originalPatch = Patches.First();
             var originalSources = originalPatch.Sources;
-            if (originalSources.Count != 1) return false;
+            if (originalSources.Count != 1) return 0;
             var destinationStream = originalSources[0];
             // the destination stream must be writable
-            if (!destinationStream.CanWrite) return false;
+            if (!destinationStream.CanWrite) return 0;
             var affectedRegions = CalculateAffectedRegions(Patch, originalPatch);
-            return affectedRegions != null && affectedRegions.Count > 0;
+            return affectedRegions == null  ? 0 : affectedRegions.Sum(o => o.Size);
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
@@ -495,6 +495,9 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public override void Flush()
         {
+#if !DEBUG
+            throw new NotImplementedException("Incomplete. Will be enabled in a future release.");
+#endif
             if (_Patches.Count < 2) return;
             if (_PatchIndex == 0) return;
             // When flush is called, check if the first Patch is a single, Writable stream.
@@ -538,6 +541,9 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public override async Task FlushAsync(CancellationToken cancellationToken)
         {
+#if !DEBUG
+            throw new NotImplementedException("Incomplete. Will be enabled in a future release.");
+#endif
             if (_Patches.Count < 2) return;
             if (_PatchIndex == 0) return;
             // When flush is called, check if the first Patch is a single, Writable stream.
@@ -854,7 +860,8 @@ namespace SpawnDev.PatchStreams
             // add anything left in this source
             if (pos < Length)
             {
-                streams.Add(Slice(pos, Length - pos));
+                var endSlice = Slice(pos, Length - pos);
+                streams.Add(endSlice);
             }
             // get the number of bytes in the current stream state that are affected by this change
             // if delete count == insert count

@@ -1,11 +1,12 @@
 ﻿using SpawnDev.PatchStreams;
+using System.Reflection;
 
 // Create a new PatchStream with or without source data.
 // Source data and data added to PatchStream should not be modified once it is added
 //var patchStream = new PatchStream(/* IEnumerable<Stream> stream(s), long offset?, long size? */);
-var memStream = new MemoryStream();
-memStream.WriteByte((byte)'Q');
-memStream.Position = 0;
+//var memStream = new MemoryStream();
+//memStream.WriteByte((byte)'Q');
+//memStream.Position = 0;
 var patchStream = new PatchStream();
 
 patchStream.OnChanged += PatchStream_OnChanged;
@@ -18,7 +19,27 @@ void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPat
     {
         Console.WriteLine($"- {i} start: {range.Start} size: {range.Size}");
     }
+    Console.WriteLine(string.Join(" ", sender.ToArray(true)));
 }
+
+patchStream.Insert("abcdef");
+patchStream.Position = 0;
+patchStream.Insert("123", 3);
+patchStream.Position = 6;
+patchStream.Insert("xyz");
+patchStream.Position = 0;
+patchStream.Insert("1");
+patchStream.Position = 0;
+Console.WriteLine(string.Join(" ", patchStream.ToArray(true)));
+
+
+
+patchStream.Position = 0; patchStream.Write("0EBML");
+patchStream.Write("/DocType");
+patchStream.Position = 0;
+patchStream.Insert("1", 1);
+Console.WriteLine(patchStream.ToString(true));
+
 
 patchStream.Write("world!");
 // patchStream data is now "world!"
