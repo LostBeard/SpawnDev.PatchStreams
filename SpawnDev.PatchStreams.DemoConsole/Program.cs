@@ -23,7 +23,7 @@ void PatchStream_OnChanged(PatchStream sender, IEnumerable<Patch> overwrittenPat
 }
 
 patchStream.Insert("defabc");
-patchStream.Move(3, 1, -1);
+patchStream.Move(0, 3, 3);
 Console.WriteLine(string.Join(" ", patchStream.ToString(true)));
 
 

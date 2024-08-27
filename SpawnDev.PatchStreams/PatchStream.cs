@@ -877,11 +877,16 @@ namespace SpawnDev.PatchStreams
         /// <param name="length">The amount of data to relocate</param>
         public void Move(long start, long destination, long length)
         {
+            if (start < 0) throw new ArgumentOutOfRangeException(nameof(start));
             if (length == 0) return;
             if (start == destination) return;
             if (length == -1)
             {
                 length = Length - start;
+            }
+            if (destination > Length - length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(destination));
             }
             var cut = Cut(start, length);
             Splice(destination, 0, cut);
