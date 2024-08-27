@@ -130,13 +130,14 @@ namespace SpawnDev.PatchStreams
             return true;
         }
         /// <summary>
-        /// 
+        /// Returns a list of Patches that have been flagged as RestorePoint, the first patch, and optionally the last patch (default)
         /// </summary>
-        /// <param name="includeLastPatch">If true, the last Patch is added to the list (default.)</param>
+        /// <param name="includeLastPatch">If true, the last Patch is added to the list (default)</param>
         /// <returns></returns>
         public IEnumerable<Patch> GetRestorePoints(bool includeLastPatch = true)
         {
-            var ret = _Patches.Where(o => o.RestorePoint).ToList();
+            var ret = _Patches.Take(1).ToList();
+            ret.AddRange(_Patches.Skip(1).Where(o => o.RestorePoint));
             if (includeLastPatch)
             {
                 var lastPatch = Patches.Last();
