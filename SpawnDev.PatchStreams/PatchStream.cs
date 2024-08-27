@@ -48,6 +48,24 @@ namespace SpawnDev.PatchStreams
             return ret;
         }
         /// <summary>
+        /// Returns a new PatchStream with the the Patch with the specified patch id from this PatchStream as the only patch<br/>
+        /// This is similar to calling Clone except only the current Patch is copied in a snapshot.<br/>
+        /// The SnapShot data will not change even if this PatchStream is modified.<br/>
+        /// </summary>
+        /// <returns></returns>
+        public PatchStream? SnapShot(string patchId)
+        {
+            var patch = _Patches.FirstOrDefault(o => o.Id == patchId);
+            if (patch == null) return null;
+            var ret = new PatchStream
+            {
+                Position = Position,
+                _Patches = new List<Patch> { patch },
+                _PatchIndex = 0,
+            };
+            return ret;
+        }
+        /// <summary>
         /// Fired when restore points are added or removed
         /// </summary>
         public event PatchStreamEvent OnRestorePointsChanged = default!;
@@ -163,16 +181,29 @@ namespace SpawnDev.PatchStreams
         public override bool CanSeek => Sources != null;
         /// <summary>
         /// Returns true if the stream can write<br/>
+        /// Enable or disable writes using WriteEnabled<br/>
+        /// Writes are enabled by default
         /// </summary>
-        public override bool CanWrite => Position >= 0 && Position <= Length;
+        public override bool CanWrite => WriteEnabled;
+        /// <summary>
+        /// Get or set write enabled flag<br/>
+        /// Writes are enabled by default
+        /// </summary>
+        public bool WriteEnabled { get; set; } = true;
         /// <summary>
         /// Returns true if the stream can timeout<br/>
         /// </summary>
         public override bool CanTimeout => false;
         /// <summary>
-        /// Returns the stream's current position
+        /// Returns the stream's current position.<br/>
+        /// Position will always return >= 0 and &lt;= Length
         /// </summary>
-        public override long Position { get; set; } = 0;
+        public override long Position
+        {
+            get => Math.Max(0, Math.Min(_Position, Length));
+            set => _Position = value;
+        }
+        private long _Position { get; set; } = 0;
         /// <summary>
         /// PatchStreamEvent signature
         /// </summary>
@@ -198,7 +229,7 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Returns an empty SegmentSource
         /// </summary>
-        public static PatchStream Empty => new();
+        public static PatchStream Empty => new(Enumerable.Empty<Stream>());
         /// <summary>
         /// The time the current patch was created
         /// </summary>
@@ -501,7 +532,7 @@ namespace SpawnDev.PatchStreams
             // the destination stream must be writable
             if (!destinationStream.CanWrite) return 0;
             var affectedRegions = CalculateAffectedRegions(Patch, originalPatch);
-            return affectedRegions == null  ? 0 : affectedRegions.Sum(o => o.Size);
+            return affectedRegions == null ? 0 : affectedRegions.Sum(o => o.Size);
         }
         /// <summary>
         /// Flush all patches from the current patch to the first to the underlying source if the original source is a single, writable stream<br/>
