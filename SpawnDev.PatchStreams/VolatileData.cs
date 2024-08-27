@@ -1,7 +1,7 @@
 ﻿namespace SpawnDev.PatchStreams
 {
     /// <summary>
-    /// Similar to Lazy%lt;>, data is not actually accessed until first requested, and then the cached value is returned from then on.<br/>
+    /// Similar to Lazy%lt;>, data is not actually accessed until first requested via the Value property getter, and then the cached value is returned from then on.<br/>
     /// The difference here is that the Getter() is called again if the PatchId has changed in the specified stream.
     /// </summary>
     public abstract class VolatileData
@@ -32,7 +32,7 @@
         }
     }
     /// <summary>
-    /// Similar to Lazy%lt;>, data is not actually accessed until first requested, and then the cached value is returned from then on.<br/>
+    /// Similar to Lazy%lt;>, data is not actually accessed until first requested via the Value property getter, and then the cached value is returned from then on.<br/>
     /// The difference here is that the Getter() is called again if the PatchId has changed in the specified stream.
     /// </summary>
     public class VolatileData<TValue> : VolatileData
