@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace SpawnDev.PatchStreams
@@ -22,14 +23,20 @@ namespace SpawnDev.PatchStreams
         /// Cloning allows forking a stream, where both streams will reference the same data that was available at the time of cloning, but any modifications are independent.<br/>
         /// </summary>
         /// <returns></returns>
-        public PatchStream Clone()
+        public PatchStream Clone(bool linked = false)
         {
-            var ret = new PatchStream
+            PatchStream ret;
+            if (linked)
             {
-                Position = Position,
-                _Patches = _Patches.ToList(),
-                _PatchIndex = _PatchIndex,
-            };
+                ret = new PatchStream();
+                ret._Patches = _Patches;
+            }
+            else
+            {
+                ret = new PatchStream(_Patches, PatchIndex);
+            }
+            ret.PatchIndex = PatchIndex;
+            ret._Position = _Position;
             return ret;
         }
         /// <summary>
@@ -40,12 +47,8 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public PatchStream SnapShot()
         {
-            var ret = new PatchStream
-            {
-                Position = Position,
-                _Patches = new List<Patch> { Patch },
-                _PatchIndex = 0,
-            };
+            var ret = new PatchStream(Patch);
+            ret.Position = Position;
             return ret;
         }
         /// <summary>
@@ -58,12 +61,7 @@ namespace SpawnDev.PatchStreams
         {
             var patch = _Patches.FirstOrDefault(o => o.Id == patchId);
             if (patch == null) return null;
-            var ret = new PatchStream
-            {
-                Position = Position,
-                _Patches = new List<Patch> { patch },
-                _PatchIndex = 0,
-            };
+            var ret = new PatchStream(patch);
             return ret;
         }
         /// <summary>
@@ -77,6 +75,11 @@ namespace SpawnDev.PatchStreams
         public IEnumerable<Patch> Patches => _Patches.ToList();
         private List<Patch> _Patches { get; set; } = new List<Patch>();
         private int _PatchIndex { get; set; } = -1;
+        public int PatchIndex
+        {
+            get => Math.Clamp(_PatchIndex, 0, _Patches.Count);
+            set => _PatchIndex = value;
+        }
         /// <summary>
         /// List of patch ids
         /// </summary>
@@ -95,14 +98,34 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public bool RestorePoint
         {
-            get => Patch.RestorePoint;
+            get => _PatchIndex == 0 || Patch.RestorePoint;
             set
             {
-                if (Patch.RestorePoint == value || (Patch.Index == 0 && value != true)) return;
+                if (Patch.RestorePoint == value || (PatchIndex == 0 && value != true)) return;
                 Patch.RestorePoint = value;
                 OnRestorePointsChanged?.Invoke(this);
             }
         }
+        
+        /// <summary>
+        /// Returns a PatchStream from the most recent RestorePoint starting from the current Patch<br/>
+        /// This is only useful if using RestorePoints to signify stable points in the Streams state.<br/>
+        /// Useful for allowing Stream readers access to the most recent version of the stream while allowing additional modifications of this PatchStream
+        /// </summary>
+        public PatchStream LatestStable
+        {
+            get
+            {
+                if (RestorePoint) return this;
+                var currentPatchIndex = _Patches.IndexOf(Patch);
+                var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
+                return Patch == mostRecent ? this : mostRecent.SnapShot;
+            }
+        }
+        /// <summary>
+        /// If true, SnapShots will be created for restore points and attached to the Patch
+        /// </summary>
+        public bool SnapShotRestorePoints { get; set; } = true;
         /// <summary>
         /// Sets the first Patch as active
         /// </summary>
@@ -162,10 +185,6 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         private long Size => Patch.Size;
         /// <summary>
-        /// Current Patch Index
-        /// </summary>
-        public int PatchIndex => _PatchIndex;
-        /// <summary>
         /// Returns true if the current position in the source<br/>
         /// </summary>
         private long SourcePosition { get => Position + Offset; set => Position = value - Offset; }
@@ -202,7 +221,7 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public override long Position
         {
-            get => Math.Max(0, Math.Min(_Position, Length));
+            get => Math.Clamp(_Position, 0, Length);
             set
             {
                 if (value < 0) throw new ArgumentOutOfRangeException(nameof(Position));
@@ -253,7 +272,23 @@ namespace SpawnDev.PatchStreams
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream() => UpdateSource(new Stream[] { new MemoryStream() });
+        public PatchStream(Patch patch)
+        {
+            _Patches.Add(patch);
+            PatchIndex = 0;
+        }
+        /// <summary>
+        /// Creates an new instance
+        /// </summary>
+        public PatchStream(IEnumerable<Patch> patches, int patchIndex = 0)
+        {
+            _Patches.AddRange(patches);
+            PatchIndex = patchIndex;
+        }
+        /// <summary>
+        /// Creates an new instance
+        /// </summary>
+        public PatchStream() => UpdateSource(Enumerable.Empty<Stream>());
         /// <summary>
         /// Creates an new instance
         /// </summary>
@@ -334,7 +369,7 @@ namespace SpawnDev.PatchStreams
             {
                 insertedByteCount = size;
             }
-            var patch = new Patch(patchIndex, newList, offset, size, changeOffset, deletedByteCount, insertedByteCount, affectedByteCount);
+            var patch = new Patch(newList, offset, size, changeOffset, deletedByteCount, insertedByteCount, affectedByteCount);
             var overwritePatchesCount = _Patches.Count - patchIndex;
             var isLatestPatch = overwritePatchesCount == 0;
             if (overwritePatchesCount > 0)
@@ -346,9 +381,8 @@ namespace SpawnDev.PatchStreams
             _Patches.Add(patch);
             // the first patch is always marked as a restore point
             IEnumerable<ByteRange> affectedRegions;
-            if (patch.Index == 0)
+            if (patchIndex == 0)
             {
-                patch.RestorePoint = true;
                 affectedRegions = Enumerable.Empty<ByteRange>();
             }
             else
@@ -357,7 +391,7 @@ namespace SpawnDev.PatchStreams
                 affectedRegions = CalculateAffectedRegions(Patch, patch)!;
             }
             // activate the new patch
-            _PatchIndex = patchIndex;
+            PatchIndex = patchIndex;
             LastChanged = DateTime.Now;
             OnChanged?.Invoke(this, overwrittenPatches, affectedRegions);
             OnRestorePointsChanged?.Invoke(this);
@@ -456,13 +490,13 @@ namespace SpawnDev.PatchStreams
         public bool Restore(int patchIndex)
         {
             if (patchIndex < 0 || patchIndex >= _Patches.Count) return false;
-            if (_PatchIndex == patchIndex)
+            if (PatchIndex == patchIndex)
             {
                 return true;
             }
             var patch = _Patches[patchIndex];
             var affectedRegions = CalculateAffectedRegions(Patch, patch);
-            _PatchIndex = patchIndex;
+            PatchIndex = patchIndex;
             LastChanged = DateTime.Now;
             OnChanged?.Invoke(this, Enumerable.Empty<Patch>(), affectedRegions!);
             return true;
@@ -474,11 +508,9 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public bool RestorePointUndo()
         {
-            // goes to the previous restore point
-            var restorePoints = GetRestorePoints();
-            var lastRestorePointBeforeThisPatch = restorePoints.Where(o => o.Index < PatchIndex).LastOrDefault();
-            if (lastRestorePointBeforeThisPatch == null) return false;
-            return Restore(lastRestorePointBeforeThisPatch.Index);
+            var currentPatchIndex = _Patches.IndexOf(Patch);
+            var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
+            return Restore(mostRecent.Id);
         }
         /// <summary>
         /// Move to the next Patch with RestorePoint == true in Patches, if there is one.<br/>
@@ -487,11 +519,9 @@ namespace SpawnDev.PatchStreams
         /// <returns></returns>
         public bool RestorePointRedo()
         {
-            // goes to the next restore point or the last patch if no restore points are after the current patch
-            var restorePoints = GetRestorePoints();
-            var lastRestorePointBeforeThisPatch = restorePoints.Where(o => o.Index > PatchIndex).FirstOrDefault();
-            if (lastRestorePointBeforeThisPatch == null) return false;
-            return Restore(lastRestorePointBeforeThisPatch.Index);
+            var currentPatchIndex = _Patches.IndexOf(Patch);
+            var mostRecent = _Patches.Skip(currentPatchIndex + 1).Where(o => o.RestorePoint).FirstOrDefault() ?? _Patches.Last();
+            return Restore(mostRecent.Id);
         }
         /// <summary>
         /// Move to the previous Patch in Patches, if there is one
@@ -528,7 +558,7 @@ namespace SpawnDev.PatchStreams
         public long CanFlush()
         {
             if (_Patches.Count < 2) return 0;
-            if (_PatchIndex == 0) return 0;
+            if (PatchIndex == 0) return 0;
             // When flush is called, check if the first Patch is a single, Writable stream.
             // If it is, get all affected regions from the current patch to the first
             // then copy all affected regions to the first
@@ -553,7 +583,7 @@ namespace SpawnDev.PatchStreams
             throw new NotImplementedException("Incomplete. Will be enabled in a future release.");
 #endif
             if (_Patches.Count < 2) return;
-            if (_PatchIndex == 0) return;
+            if (PatchIndex == 0) return;
             // When flush is called, check if the first Patch is a single, Writable stream.
             // If it is, get all affected regions from the current patch to the first
             // then copy all affected regions to the first
@@ -582,7 +612,7 @@ namespace SpawnDev.PatchStreams
             }
             // because we have modified an underlying source, all Patches, except the first, will be discarded
             // as far as any viewers of this stream are concerned, no data has changed
-            _PatchIndex = -1;
+            PatchIndex = -1;
             destinationStream.Position = destinationPosition;
             Position = originalPosition;
             UpdateSource(originalPatch.Sources, originalPatch.Offset);
@@ -599,7 +629,7 @@ namespace SpawnDev.PatchStreams
             throw new NotImplementedException("Incomplete. Will be enabled in a future release.");
 #endif
             if (_Patches.Count < 2) return;
-            if (_PatchIndex == 0) return;
+            if (PatchIndex == 0) return;
             // When flush is called, check if the first Patch is a single, Writable stream.
             // If it is, get all affected regions from the current patch to the first
             // then copy all affected regions to the first
@@ -628,7 +658,7 @@ namespace SpawnDev.PatchStreams
             }
             // because we have modified an underlying source, all Patches, except the first, will be discarded
             // as far as any viewers of this stream are concerned, no data has changed
-            _PatchIndex = -1;
+            PatchIndex = -1;
             destinationStream.Position = destinationPosition;
             Position = originalPosition;
             UpdateSource(originalPatch.Sources, originalPatch.Offset);
@@ -880,6 +910,7 @@ namespace SpawnDev.PatchStreams
             if (start < 0) throw new ArgumentOutOfRangeException(nameof(start));
             if (length == 0) return;
             if (start == destination) return;
+            if (destination < 0) destination = Length - length;
             if (length == -1)
             {
                 length = Length - start;

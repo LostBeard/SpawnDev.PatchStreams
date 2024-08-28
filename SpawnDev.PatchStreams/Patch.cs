@@ -5,6 +5,11 @@
     /// </summary>
     public class Patch
     {
+        PatchStream? _SnapShot = null;
+        /// <summary>
+        /// Returns a snapshot for this Patch
+        /// </summary>
+        public PatchStream SnapShot => _SnapShot ??= new PatchStream(this);
         /// <summary>
         /// Get or set if this patch is a restore point<br/>
         /// Useful in marking stable points in a stream's patch history
@@ -22,7 +27,7 @@
         /// <summary>
         /// The patches index in the patches collection
         /// </summary>
-        public int Index { get; init; }
+        //public int Index { get; init; }
         /// <summary>
         /// The time the patch was created
         /// </summary>
@@ -59,10 +64,9 @@
         /// <summary>
         /// Creates a new patch
         /// </summary>
-        public Patch(int index, List<Stream> sources, long offset, long size, long changeOffset, long deletedByteCount, long insertedByteCount, long affectedByteCount)
+        public Patch(List<Stream> sources, long offset, long size, long changeOffset, long deletedByteCount, long insertedByteCount, long affectedByteCount)
         {
             Id = Guid.NewGuid().ToString();
-            Index = index;
             Sources = sources;
             Offset = offset;
             Size = size;
