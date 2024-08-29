@@ -123,6 +123,26 @@ namespace SpawnDev.PatchStreams
             }
         }
         /// <summary>
+        /// GetPatchStream
+        /// </summary>
+        /// <param name="patchId"></param>
+        /// <returns></returns>
+        public PatchStream this[string patchId] => GetPatchStream(patchId);
+        /// <summary>
+        /// If the patch id matches the current patch id it returns this, else<br/>
+        /// finds the requested patch, creates a shared snapshot if one does not exist, and returns it
+        /// </summary>
+        /// <param name="stringPatchId"></param>
+        /// <returns></returns>
+        public PatchStream GetPatchStream(string stringPatchId)
+        {
+            if (Patch.Id == stringPatchId) return this;
+            var patch = _Patches.Where(o => o.Id == stringPatchId).First();
+            var currentPatchIndex = _Patches.IndexOf(patch);
+            var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
+            return Patch == mostRecent ? this : mostRecent.SnapShot;
+        }
+        /// <summary>
         /// If true, SnapShots will be created for restore points and attached to the Patch
         /// </summary>
         public bool SnapShotRestorePoints { get; set; } = true;
@@ -394,7 +414,7 @@ namespace SpawnDev.PatchStreams
             PatchIndex = patchIndex;
             LastChanged = DateTime.Now;
             OnChanged?.Invoke(this, overwrittenPatches, affectedRegions);
-            OnRestorePointsChanged?.Invoke(this);
+            if (Patch.RestorePoint) OnRestorePointsChanged?.Invoke(this);
         }
         /// <summary>
         /// Returns a List of non-overlapping ranges representing regions of data that will be affected if switching from [fromPatchId] to [toPatchId]

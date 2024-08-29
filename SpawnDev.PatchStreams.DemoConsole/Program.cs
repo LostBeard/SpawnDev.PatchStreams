@@ -107,6 +107,6 @@ Console.WriteLine(patchStream.ToString(true));
 
 foreach (var patch in patchStream.Patches)
 {
-    Console.WriteLine($"{patch.Index} {patch.Size} {patch.ChangeOffset} {patch.DeletedByteCount} {patch.InsertedByteCount}");
+    Console.WriteLine($"{patch.Size} {patch.ChangeOffset} {patch.DeletedByteCount} {patch.InsertedByteCount}");
 }
 var nmttt = true;
