@@ -106,7 +106,7 @@ namespace SpawnDev.PatchStreams
                 OnRestorePointsChanged?.Invoke(this);
             }
         }
-        
+
         /// <summary>
         /// Returns a PatchStream from the most recent RestorePoint starting from the current Patch<br/>
         /// This is only useful if using RestorePoints to signify stable points in the Streams state.<br/>
@@ -530,19 +530,51 @@ namespace SpawnDev.PatchStreams
         {
             var currentPatchIndex = _Patches.IndexOf(Patch);
             var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
+            if (mostRecent == Patch) return false;
             return Restore(mostRecent.Id);
         }
+        /// <summary>
+        /// The id of the closest previous patch id that is a restore point<br/>
+        /// The first patch is always considered a restore point
+        /// </summary>
+        public string? RestorePointUndoId => _Patches.Take(_Patches.IndexOf(Patch)).Where(o => o.RestorePoint).LastOrDefault()?.Id ?? (PatchIndex == 0 ? null : _Patches.First().Id);
         /// <summary>
         /// Move to the next Patch with RestorePoint == true in Patches, if there is one.<br/>
         /// The first patch and last patch are both considered un-official restore points.
         /// </summary>
         /// <returns></returns>
-        public bool RestorePointRedo()
+        public bool RestorePointRedo(bool considerLastIsRestorePoint = true)
         {
             var currentPatchIndex = _Patches.IndexOf(Patch);
-            var mostRecent = _Patches.Skip(currentPatchIndex + 1).Where(o => o.RestorePoint).FirstOrDefault() ?? _Patches.Last();
+            var mostRecent = _Patches.Skip(_Patches.IndexOf(Patch) + 1).Where(o => o.RestorePoint).FirstOrDefault();
+            if (mostRecent == null)
+            {
+                if (!considerLastIsRestorePoint) return false;
+                mostRecent = _Patches.Last();
+                if (mostRecent == Patch) return false;
+            }
             return Restore(mostRecent.Id);
         }
+        /// <summary>
+        /// The id of the closest following patch id that is a restore point.<br/>
+        /// The last patch is not considered a restore point unless marked restore point (unlike with RestorePointRedo)
+        /// </summary>
+        public string? RestorePointRedoId
+        {
+            get
+            {
+                var ret = _Patches.Skip(_Patches.IndexOf(Patch) + 1).Where(o => o.RestorePoint).FirstOrDefault()?.Id;
+                return ret;
+            }
+        }
+        /// <summary>
+        /// Returns true if there is previous Patch
+        /// </summary>
+        public bool CanRestorePointUndo => RestorePointUndoId != null;
+        /// <summary>
+        /// Returns true if there is a Patch following the active one in Patches
+        /// </summary>
+        public bool CanRestorePointRedo => RestorePointRedoId != null;
         /// <summary>
         /// Move to the previous Patch in Patches, if there is one
         /// </summary>
