@@ -9,7 +9,7 @@
         /// <summary>
         /// Returns a snapshot for this Patch
         /// </summary>
-        public PatchStream SnapShot => _SnapShot ??= new PatchStream(this);
+        public PatchStream SnapShot => _SnapShot ??= new PatchStream(this, SourceId);
         /// <summary>
         /// Get or set if this patch is a restore point<br/>
         /// Useful in marking stable points in a stream's patch history
@@ -19,6 +19,10 @@
         /// Unique patch id useful in representing a specific stream state
         /// </summary>
         public string Id { get; init; }
+        /// <summary>
+        /// The PatchStream that created this Patch
+        /// </summary>
+        public string SourceId { get; init; }
         /// <summary>
         /// Optional patch description<br/>
         /// Useful for tagging restore points
@@ -64,7 +68,7 @@
         /// <summary>
         /// Creates a new patch
         /// </summary>
-        public Patch(List<Stream> sources, long offset, long size, long changeOffset, long deletedByteCount, long insertedByteCount, long affectedByteCount)
+        public Patch(string sourceId, List<Stream> sources, long offset, long size, long changeOffset, long deletedByteCount, long insertedByteCount, long affectedByteCount)
         {
             Id = Guid.NewGuid().ToString();
             Sources = sources;

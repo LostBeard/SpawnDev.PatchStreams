@@ -2,70 +2,95 @@
 
 [![NuGet version](https://badge.fury.io/nu/SpawnDev.PatchStreams.svg)](https://www.nuget.org/packages/SpawnDev.PatchStreams)
 
-## PatchStream : Stream
+A patch-based `Stream` for non-destructive editing. Writes never touch the source bytes — they compose a virtual view of one or more underlying streams (or byte ranges within them) that callers can read as if it were a single stream. Every edit becomes a patch: cheap to record, cheap to undo, cheap to redo.
 
-- PatchStream inherits from [Stream](https://learn.microsoft.com/en-us/dotnet/api/system.io.stream?view=net-8.0) making it easy to use with countless existing libraries that can work with Streams.
-- It is a readable, writable stream that, when modified, does not modify any source data or data added to it, but instead creates patches to represent the data changes.
-- Supports data deletion, insertion, overwriting, slicing, splicing, undo/redo, restore points, partial data views, multi-stream read-only sources, and multiple stream insertion.
-- All modifications to a PatchStream are saved in patches which can be undone and redone as fast as changing a single integer value
-- Restore points can be set at any point and restored easily to make undo/redo easier.
-- Low memory usage and blazing fast modifications.
-- IMPORTANT - Once data has been added to a PatchStream it should not be modified in any way. Modify the PatchStream itself.
+Targets: `net10.0`, `net9.0`, `net8.0`.
 
+## Why
 
-The below code is a basic demonstration of PatchStream reading writing, inserting, deleting, restore point usage, and an undo.
+Some workloads need to edit a stream but can't afford to copy it — a large file, a parsed media container (e.g. WebM), or a stream whose source data is effectively read-only. Traditional stream editing means buffering and rewriting. PatchStreams stitches together views instead, so edits are O(1) and the source bytes stay untouched until (optionally) flushed.
+
+## Core ideas
+
+- **A PatchStream is a virtual view composed of slices from one or more source streams, presented as one continuous `Stream`.** Reads walk across those slices transparently.
+- **Edits create patches, not byte copies.** An `Insert`, `Delete`, `Splice`, or `Move` becomes a new patch that describes which slices to present next. The actual source bytes never move.
+- **Undo/redo is just switching which patch is active.** Walking the patch list is constant time; no data is copied.
+- **Restore points** mark stable intermediate states in the patch list — useful for grouping several low-level edits into one logical checkpoint that can be jumped back to.
+- **`LatestStable` is the snapshot a reader should trust.** It walks back from the current patch to the most recent restore point and returns a frozen `PatchStream` of that state. Useful when a writer is mid-edit and a concurrent reader wants a coherent view.
+
+## Quick tour
+
 ```cs
 using SpawnDev.PatchStreams;
 
-// Create a new PatchStream with or without source data.
-// Source data and data added to PatchStream should not be modified once it is added
+// Create from a source stream, a byte[], or nothing.
 var patchStream = new PatchStream(new MemoryStream());
-patchStream.Write("world!");
-// patchStream data is now "world!"
 
-// prepend "Hello "
+// Default Write is overwrite (like File streams).
+patchStream.Write("world!");                // stream is "world!"
+
+// Insert mode prepends without overwriting.
 patchStream.InsertWrites = true;
 patchStream.Position = 0;
-patchStream.Write("Hello ");
+patchStream.Write("Hello ");                // stream is "Hello world!"
 
-// patchStream data is now "Hello world!"
-Console.WriteLine(patchStream.ToString(true));
-
-// set restore point for the current patch. we can revert back later
+// Mark a stable checkpoint.
 patchStream.RestorePoint = true;
 
-// overwrite "world!" with "DotNet!"
+// Overwrite a region.
 patchStream.InsertWrites = false;
 patchStream.Position = 6;
-patchStream.Write("DotNet!");
+patchStream.Write("DotNet!");               // stream is "Hello DotNet!"
 
-// patchStream data is now "Hello DotNet!"
-Console.WriteLine(patchStream.ToString(true));
-
-// prepend "Presenting: "
+// Insert more in front.
 patchStream.InsertWrites = true;
 patchStream.Position = 0;
-patchStream.Write("Presenting: ");
+patchStream.Write("Presenting: ");          // stream is "Presenting: Hello DotNet!"
 
-// delete data
-patchStream.Delete();
+// Wipe it all.
+patchStream.Delete();                        // stream is ""
 
-// patchStream data is now "" and patchStream.Length == 0
-Console.WriteLine("Empty ->" + patchStream.ToString(true));
+// Undo just the Delete.
+patchStream.Undo();                          // stream is "Presenting: Hello DotNet!"
 
-// undo the last modification, which was a Delete()
-patchStream.Undo();
+// Jump back to the last restore point.
+patchStream.RestorePointUndo();              // stream is "Hello world!"
 
-// patchStream data is now "Presenting: Hello DotNet!"
-Console.WriteLine(patchStream.ToString(true));
-
-// go to the most recent restore point
-patchStream.RestorePointUndo();
-
-// patchStream data is now "Hello world!"
-Console.WriteLine(patchStream.ToString(true));
-
-// Flush current patch stream to the original source stream (for single, writable source streams only)
+// Optional: write the current patched state back to the original
+// writable source. Irreversible.
 patchStream.Flush();
-
 ```
+
+## Operations
+
+| Method | Effect |
+|---|---|
+| `Write(byte[], int, int)` | Overwrite or insert (controlled by `InsertWrites`). |
+| `Insert(byte[] / Stream / IEnumerable<Stream>)` | Insert at current `Position`. |
+| `Delete(start, length)` / `Delete(length)` / `Delete()` | Remove a range (or everything). |
+| `Splice(start, deleteCount, params Stream[])` | Atomic delete + insert. |
+| `Slice(start, size)` | Returns a new `PatchStream` view into this one without copying bytes. |
+| `Cut(start, size)` | Like `Slice`, but also removes the range from this stream. |
+| `Move(start, destination, length)` | Relocate a range without copying bytes. |
+| `Clone()` | New `PatchStream` sharing the same patch list. Independent position. |
+| `SnapShot(useShared = true)` | Freeze the current state into a single-patch `PatchStream`. |
+
+## Undo, redo, restore points
+
+- `Undo()` / `Redo()` step through individual patches.
+- `RestorePoint = true` marks the current patch. `RestorePointUndo()` / `RestorePointRedo()` skip between restore points — the first and last patch always behave as restore-point boundaries.
+- `LatestStable` returns a `PatchStream` of the most recent restore point at or before the current patch. While a caller is mid-edit (writing several patches before marking a restore point), another thread can read `LatestStable` and see a consistent view of the last stable state.
+
+## Events
+
+- `OnChanged(sender, overwrittenPatches, affectedRegions)` — fires after every modification. Handlers may read the stream, but they should not assume `Position` is where you last left it; capture the position before calling the operation that fires the event.
+- `OnRestorePointsChanged(sender)` — fires when a restore point is added or removed.
+
+## Notes for embedders
+
+- **Consumers that store `LatestStable` in a field** must be careful. `LatestStable` returns the most recent restore point *at the moment it is called*. If the current patch is not yet a restore point (e.g. inside an `OnChanged` handler fired from `Insert`), `LatestStable` may walk back to a previous snapshot. That snapshot is frozen — later restore points on the live stream will not update it. If you need to track the live stream, keep a separate reference to the original `PatchStream` and call `.LatestStable` on it fresh each time you need the current snapshot.
+- **Sources must not be mutated externally** once handed to a `PatchStream`. The stream reads them on demand; mutating them from the outside is undefined behavior.
+
+## License
+
+MIT. See `LICENSE.txt`.

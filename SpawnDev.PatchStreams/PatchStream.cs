@@ -17,25 +17,24 @@ namespace SpawnDev.PatchStreams
     public class PatchStream : Stream
     {
         /// <summary>
+        /// Unique id to represent this PatchStream. Created when this PatchStream is created.
+        /// </summary>
+        public string Id { get; } = Guid.NewGuid().ToString();
+        /// <summary>
+        /// The Id of the PatchStream who sourced the Patch(es) that created this PatchStream patches
+        /// </summary>
+        public string SourceId { get; set; }
+        /// <summary>
         /// Returns a clone of this PatchStream<br/>
         /// All patches are copied. Position, and PatchIndex are also copied so that the current view is retained.<br/>
         /// No underlying data is actually copied, only references are copied.<br/>
         /// Cloning allows forking a stream, where both streams will reference the same data that was available at the time of cloning, but any modifications are independent.<br/>
         /// </summary>
         /// <returns></returns>
-        public PatchStream Clone(bool linked = false)
+        public PatchStream Clone()
         {
             PatchStream ret;
-            if (linked)
-            {
-                ret = new PatchStream();
-                ret._Patches = _Patches;
-            }
-            else
-            {
-                ret = new PatchStream(_Patches, PatchIndex);
-            }
-            ret.PatchIndex = PatchIndex;
+            ret = new PatchStream(_Patches, Id, PatchIndex);
             ret._Position = _Position;
             return ret;
         }
@@ -45,24 +44,30 @@ namespace SpawnDev.PatchStreams
         /// The SnapShot data will not change even if this PatchStream is modified.<br/>
         /// </summary>
         /// <returns></returns>
-        public PatchStream SnapShot()
+        public PatchStream SnapShot(bool useShared = true)
         {
-            var ret = new PatchStream(Patch);
-            ret.Position = Position;
-            return ret;
+            return SnapShot(PatchId, useShared)!;
         }
         /// <summary>
         /// Returns a new PatchStream with the the Patch with the specified patch id from this PatchStream as the only patch<br/>
         /// This is similar to calling Clone except only the current Patch is copied in a snapshot.<br/>
+        /// SnapShots have their Shared property set to true<br/>
         /// The SnapShot data will not change even if this PatchStream is modified.<br/>
         /// </summary>
         /// <returns></returns>
-        public PatchStream? SnapShot(string patchId)
+        public PatchStream? SnapShot(string patchId, bool useShared = true)
         {
             var patch = _Patches.FirstOrDefault(o => o.Id == patchId);
             if (patch == null) return null;
-            var ret = new PatchStream(patch);
-            return ret;
+            if (useShared)
+            {
+                return patch.SnapShot;
+            }
+            else
+            {
+                var ret = new PatchStream(patch, Id);
+                return ret;
+            }
         }
         /// <summary>
         /// Fired when restore points are added or removed
@@ -116,6 +121,13 @@ namespace SpawnDev.PatchStreams
         {
             get
             {
+                // If the current patch IS a restore point, it's the latest stable - return
+                // this stream directly. Otherwise walk BACK through prior patches looking for
+                // the most recent restore point. Fall back to the first patch if none found.
+                // (The previous implementation excluded the current patch unconditionally,
+                // which meant a just-set RestorePoint on the current patch never qualified
+                // and consumers that had no prior restore points always saw the initial
+                // empty snapshot even after edits.)
                 if (RestorePoint) return this;
                 var currentPatchIndex = _Patches.IndexOf(Patch);
                 var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
@@ -127,21 +139,19 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         /// <param name="patchId"></param>
         /// <returns></returns>
-        public PatchStream this[string patchId] => GetPatchStream(patchId);
+        public PatchStream this[string patchId] => SnapShot(patchId, true);
         /// <summary>
         /// If the patch id matches the current patch id it returns this, else<br/>
         /// finds the requested patch, creates a shared snapshot if one does not exist, and returns it
         /// </summary>
-        /// <param name="stringPatchId"></param>
+        /// <param name="patchId"></param>
         /// <returns></returns>
-        public PatchStream GetPatchStream(string stringPatchId)
-        {
-            if (Patch.Id == stringPatchId) return this;
-            var patch = _Patches.Where(o => o.Id == stringPatchId).First();
-            var currentPatchIndex = _Patches.IndexOf(patch);
-            var mostRecent = _Patches.Take(currentPatchIndex).Where(o => o.RestorePoint).LastOrDefault() ?? _Patches.First();
-            return Patch == mostRecent ? this : mostRecent.SnapShot;
-        }
+        //public PatchStream GetPatchStream(string patchId)
+        //{
+        //    if (Patch.Id == patchId) return this;
+        //    var patch = _Patches.Where(o => o.Id == patchId).First();
+        //    return patch.SnapShot;
+        //}
         /// <summary>
         /// If true, SnapShots will be created for restore points and attached to the Patch
         /// </summary>
@@ -244,8 +254,14 @@ namespace SpawnDev.PatchStreams
             get => Math.Clamp(_Position, 0, Length);
             set
             {
-                if (value < 0) throw new ArgumentOutOfRangeException(nameof(Position));
-                if (value > Length) throw new ArgumentOutOfRangeException(nameof(Position));
+                if (value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(Position));
+                }
+                if (value > Length)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(Position));
+                }
                 _Position = value;
             }
         }
@@ -286,24 +302,34 @@ namespace SpawnDev.PatchStreams
         /// </summary>
         public DateTime LastChanged { get; private set; }
         /// <summary>
+        /// Get or set if this stream is shared.<br/>
+        /// This is set to true if this PatchStream was created using existing Patches
+        /// </summary>
+        public bool SharedPatches { get; set; }
+        /// <summary>
         /// The time the current patch was created
         /// </summary>
         public DateTime FirstCreated => _Patches.First().Created;
         /// <summary>
-        /// Creates an new instance
+        /// Creates an new instance os PatchStream with a single patch.<br/>
+        /// PatchId of the new PatchStream will be the same as the source patch<br/>
         /// </summary>
-        public PatchStream(Patch patch)
+        public PatchStream(Patch patch, string sourceId)
         {
             _Patches.Add(patch);
             PatchIndex = 0;
+            SharedPatches = true;
+            SourceId = sourceId;
         }
         /// <summary>
         /// Creates an new instance
         /// </summary>
-        public PatchStream(IEnumerable<Patch> patches, int patchIndex = 0)
+        public PatchStream(IEnumerable<Patch> patches, string sourceId, int patchIndex = 0)
         {
             _Patches.AddRange(patches);
             PatchIndex = patchIndex;
+            SharedPatches = true;
+            SourceId = sourceId;
         }
         /// <summary>
         /// Creates an new instance
@@ -389,7 +415,7 @@ namespace SpawnDev.PatchStreams
             {
                 insertedByteCount = size;
             }
-            var patch = new Patch(newList, offset, size, changeOffset, deletedByteCount, insertedByteCount, affectedByteCount);
+            var patch = new Patch(Id, newList, offset, size, changeOffset, deletedByteCount, insertedByteCount, affectedByteCount);
             var overwritePatchesCount = _Patches.Count - patchIndex;
             var isLatestPatch = overwritePatchesCount == 0;
             if (overwritePatchesCount > 0)
@@ -535,7 +561,8 @@ namespace SpawnDev.PatchStreams
         }
         /// <summary>
         /// The id of the closest previous patch id that is a restore point<br/>
-        /// The first patch is always considered a restore point
+        /// The first patch is always considered a restore point<br/>
+        /// If there is no restore point before the current, null is returned
         /// </summary>
         public string? RestorePointUndoId => _Patches.Take(_Patches.IndexOf(Patch)).Where(o => o.RestorePoint).LastOrDefault()?.Id ?? (PatchIndex == 0 ? null : _Patches.First().Id);
         /// <summary>
@@ -764,8 +791,13 @@ namespace SpawnDev.PatchStreams
             if (Position > Length) throw new Exception("Write past end of file");
             var bytes = buffer.Skip(offset).Take(count).ToArray();
             var overwriteCount = InsertWrites ? 0 : count;
-            Splice(Position, overwriteCount, new MemoryStream(bytes));
-            Position += count;
+            // Capture the write position BEFORE Splice. Splice fires OnChanged,
+            // and event handlers may read the stream (moving Position to EOF).
+            // If we computed the post-write Position from the mutated value,
+            // we'd land past the new Length and throw.
+            var writeAt = Position;
+            Splice(writeAt, overwriteCount, new MemoryStream(bytes));
+            Position = writeAt + count;
         }
         /// <summary>
         /// When true, writes will insert data instead writing over data
@@ -886,8 +918,10 @@ namespace SpawnDev.PatchStreams
         public long Insert(Stream data, long replaceLength = 0)
         {
             var dataSize = data.Length;
-            Splice(Position, replaceLength, data);
-            Position += dataSize;
+            // Capture the insertion point BEFORE Splice. See Write() for why.
+            var insertAt = Position;
+            Splice(insertAt, replaceLength, data);
+            Position = insertAt + dataSize;
             return dataSize;
         }
         /// <summary>
@@ -931,8 +965,10 @@ namespace SpawnDev.PatchStreams
         {
             var data = streams.ToArray();
             var dataSize = data.Sum(o => o.Length);
-            Splice(Position, replaceLength, data);
-            Position += dataSize;
+            // Capture the insertion point BEFORE Splice. See Write() for why.
+            var insertAt = Position;
+            Splice(insertAt, replaceLength, data);
+            Position = insertAt + dataSize;
             return dataSize;
         }
         /// <summary>
@@ -1050,9 +1086,14 @@ namespace SpawnDev.PatchStreams
             var sourceIndex = 0;
             var source = Sources[sourceIndex];
             var currentOffset = SourcePosition;
-            while (source.Length < currentOffset)
+            // Walk forward past any Sources whose bytes lie entirely before SourcePosition.
+            // Two prior bugs: (1) the bound compared an INDEX against the source's BYTE
+            // LENGTH (`source.Length - 1`), which returned 0 prematurely when Sources[0]
+            // was tiny; (2) using `<` instead of `<=` meant a Position landing exactly
+            // at a source boundary stayed on the wrong source.
+            while (source.Length <= currentOffset)
             {
-                if (sourceIndex >= source.Length - 1) return 0;
+                if (sourceIndex >= Sources.Count - 1) return 0;
                 sourceIndex++;
                 currentOffset = currentOffset - source.Length;
                 source = Sources[sourceIndex];
@@ -1103,9 +1144,11 @@ namespace SpawnDev.PatchStreams
             var sourceIndex = 0;
             var source = Sources[sourceIndex];
             var currentOffset = SourcePosition;
-            while (source.Length < currentOffset)
+            // See ReadAsync above for the reasoning behind the `<=` and
+            // `Sources.Count - 1` fixes.
+            while (source.Length <= currentOffset)
             {
-                if (sourceIndex >= source.Length - 1) return 0;
+                if (sourceIndex >= Sources.Count - 1) return 0;
                 sourceIndex++;
                 currentOffset = currentOffset - source.Length;
                 source = Sources[sourceIndex];
