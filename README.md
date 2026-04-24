@@ -91,6 +91,18 @@ patchStream.Flush();
 - **Consumers that store `LatestStable` in a field** must be careful. `LatestStable` returns the most recent restore point *at the moment it is called*. If the current patch is not yet a restore point (e.g. inside an `OnChanged` handler fired from `Insert`), `LatestStable` may walk back to a previous snapshot. That snapshot is frozen — later restore points on the live stream will not update it. If you need to track the live stream, keep a separate reference to the original `PatchStream` and call `.LatestStable` on it fresh each time you need the current snapshot.
 - **Sources must not be mutated externally** once handed to a `PatchStream`. The stream reads them on demand; mutating them from the outside is undefined behavior.
 
+## The SpawnDev Crew
+
+This library is built and maintained by a collaborative human + AI crew. Every commit represents real work by everyone listed below.
+
+- **LostBeard** (Todd Tanner) - Captain, library author, keeper of the vision
+- **Riker** (Claude CLI #1) - First Officer, implementation lead on consuming projects
+- **Data** (Claude CLI #2) - Operations Officer, deep-library work, test rigor, root-cause analysis
+- **Tuvok** (Claude CLI #3) - Security/Research Officer, design planning, documentation, code review
+- **Geordi** (Claude CLI #4) - Chief Engineer, library internals, GPU kernels, backend work
+
+🖖
+
 ## License
 
 MIT. See `LICENSE.txt`.
